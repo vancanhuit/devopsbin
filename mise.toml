@@ -1,0 +1,21 @@
+[tools]
+go = "1.26.4"
+golangci-lint = "2.12.2"
+"go:github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen" = "2.7.1"
+bun = "1.3.14"
+
+[tasks."api:generate"]
+description = "Generate Go code from OpenAPI specification using oapi-codegen."
+run = 'oapi-codegen -config api/oapi-codegen.yaml api/openapi.yaml'
+
+[tasks."api:test:unit"]
+description = "Run unit tests for the API."
+run = "go test -v -cover ./internal/..."
+
+[tasks."api:lint"]
+description = "Run golangci-lint on the API code."
+run = "golangci-lint run -v ./internal/..."
+
+[tasks."api:format"]
+description = "Format the API code using golangci-lint."
+run = "golangci-lint run -v ./internal/... --fix"

@@ -1,0 +1,191 @@
+openapi: 3.0.3
+info:
+  title: DevOpsBin API
+  version: 0.1.0
+  description: Minimal OpenAPI starter spec for DevOpsBin runtime endpoints.
+
+servers:
+  - url: /api/v1
+    description: API v1 base path
+
+tags:
+  - name: Runtime
+    description: Runtime, health probe, and build metadata endpoints.
+
+paths:
+  /livez:
+    get:
+      operationId: getLivez
+      tags:
+        - Runtime
+      summary: Liveness probe
+      description: Process-only liveness check. Do not check PostgreSQL or Redis here.
+      responses:
+        "200":
+          description: Process is alive.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LivezResponse"
+
+  /readyz:
+    get:
+      operationId: getReadyz
+      tags:
+        - Runtime
+      summary: Readiness probe
+      description: Checks whether the application is ready to receive traffic.
+      responses:
+        "200":
+          description: Application is ready.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyzResponse"
+        "503":
+          description: Application is not ready.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyzResponse"
+
+  /startupz:
+    get:
+      operationId: getStartupz
+      tags:
+        - Runtime
+      summary: Startup probe
+      description: Checks whether application startup has completed.
+      responses:
+        "200":
+          description: Application startup is complete.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StartupzResponse"
+        "503":
+          description: Application startup is still in progress.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StartupzResponse"
+
+  /version:
+    get:
+      operationId: getVersion
+      tags:
+        - Runtime
+      summary: Build and version metadata
+      responses:
+        "200":
+          description: Version metadata.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionResponse"
+
+components:
+  schemas:
+    LivezResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum:
+            - ok
+          example: ok
+
+    ReadyzResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - checks
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - not_ready
+          example: ready
+        checks:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/DependencyCheck"
+          example:
+            postgres:
+              status: ok
+            redis:
+              status: ok
+            migrations:
+              status: ok
+
+    StartupzResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - checks
+      properties:
+        status:
+          type: string
+          enum:
+            - started
+            - starting
+          example: started
+        checks:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/DependencyCheck"
+          example:
+            config:
+              status: ok
+            migrations:
+              status: ok
+
+    DependencyCheck:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum:
+            - ok
+            - error
+            - skipped
+          example: ok
+        message:
+          type: string
+          example: dependency is healthy
+
+    VersionResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - service
+        - version
+        - git_sha
+        - build_time
+        - go_version
+      properties:
+        service:
+          type: string
+          example: devopsbin-api
+        version:
+          type: string
+          example: 0.1.0
+        git_sha:
+          type: string
+          example: abc123
+        build_time:
+          type: string
+          format: date-time
+          example: "2026-06-06T10:00:00Z"
+        go_version:
+          type: string
+          example: go1.24.4

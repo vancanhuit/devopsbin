@@ -1,0 +1,16 @@
+node_modules/
+dist/
+build/
+*.log
+*.env
+*.db
+*.sqlite
+*.sqlite3
+*.bak
+*.backup
+*.tmp
+*.swp
+*.swo
+*.DS_Store
+.idea/
+.vscode/

@@ -1,0 +1,29 @@
+# oapi-codegen configuration for DevOpsBin.
+#
+# Input:
+#   api/openapi.yaml
+#
+# Output:
+#   internal/httpapi/openapi.gen.go
+#
+# Usage:
+#   oapi-codegen -config oapi-codegen.yaml api/openapi.yaml
+#
+# Notes:
+#   - Do not edit generated files manually.
+#   - OpenAPI must be 3.0.x for oapi-codegen compatibility.
+#   - Generated code should be committed so CI can verify reproducibility.
+
+package: httpapi
+
+generate:
+  chi-server: true
+  models: true
+  embedded-spec: true
+  strict-server: true
+
+output: internal/httpapi/openapi.gen.go
+
+output-options:
+  skip-prune: true
+  user-templates: {}
