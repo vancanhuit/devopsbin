@@ -33,12 +33,59 @@ const api = new RuntimeApi(new Configuration())
 // rawCalls maps each documented endpoint path to its generated raw call. The
 // *Raw variants return an ApiResponse, exposing both the typed body via
 // value() and the underlying Response for status and timing.
-const rawCalls: Record<string, () => Promise<ApiResponse<unknown>>> = {
+const rawCalls = {
   '/livez': () => api.getLivezRaw(),
   '/readyz': () => api.getReadyzRaw(),
   '/startupz': () => api.getStartupzRaw(),
   '/version': () => api.getVersionRaw(),
+} satisfies Record<string, () => Promise<ApiResponse<unknown>>>
+
+// EndpointPath is the set of documented API paths the console can call.
+export type EndpointPath = keyof typeof rawCalls
+
+// Endpoint describes a documented endpoint for both invocation and display.
+// This is the single source of truth consumed by the UI; the path is typed
+// against rawCalls so the metadata cannot drift from the callable endpoints.
+export interface Endpoint {
+  method: string
+  path: EndpointPath
+  title: string
+  description: string
+  // Status codes the endpoint may return that should still be treated as a
+  // documented (expected) response, e.g. readyz returns 503 when not ready.
+  expectedStatuses: number[]
 }
+
+export const endpoints: readonly Endpoint[] = [
+  {
+    method: 'GET',
+    path: '/livez',
+    title: 'Liveness',
+    description: 'Process-only liveness check. Always 200 while the process runs.',
+    expectedStatuses: [200],
+  },
+  {
+    method: 'GET',
+    path: '/readyz',
+    title: 'Readiness',
+    description: 'Reports whether the service is ready to receive traffic (503 when not).',
+    expectedStatuses: [200, 503],
+  },
+  {
+    method: 'GET',
+    path: '/startupz',
+    title: 'Startup',
+    description: 'Reports whether startup has completed (503 while still starting).',
+    expectedStatuses: [200, 503],
+  },
+  {
+    method: 'GET',
+    path: '/version',
+    title: 'Version',
+    description: 'Build and version metadata for the running binary.',
+    expectedStatuses: [200],
+  },
+]
 
 function elapsedMs(start: number): number {
   return Math.round((performance.now() - start) * 100) / 100
@@ -61,7 +108,7 @@ async function parseBody(res: Response): Promise<unknown> {
 // reported with their status and parsed body; only transport failures (network
 // errors, unknown paths) set `error`.
 export async function call(path: string): Promise<CallResult> {
-  const raw = rawCalls[path]
+  const raw = (rawCalls as Record<string, (() => Promise<ApiResponse<unknown>>) | undefined>)[path]
   if (!raw) {
     return { ok: false, status: 0, durationMs: 0, body: null, error: `unknown endpoint: ${path}` }
   }

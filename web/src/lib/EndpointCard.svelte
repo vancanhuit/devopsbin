@@ -66,7 +66,7 @@
   </header>
 
   {#if result}
-    <div class="flex flex-col gap-2">
+    <div class="flex flex-col gap-2" role="status" aria-live="polite">
       <div class="flex flex-wrap items-center gap-2 text-xs">
         <span
           class="rounded-full px-2.5 py-0.5 font-mono font-semibold ring-1 ring-inset {statusClasses(

@@ -103,6 +103,9 @@ jobs:
       - name: Run backend linters
         run: mise run api:lint
 
+      - name: Scan backend for vulnerabilities
+        run: mise run api:vulncheck
+
       - name: Run unit tests
         run: mise run api:test:unit
 

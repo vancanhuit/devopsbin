@@ -24,6 +24,11 @@ tools = { golangci-lint = "2.12.2" }
 description = "Run golangci-lint on the API code."
 run = "golangci-lint run -v ./internal/..."
 
+[tasks."api:vulncheck"]
+tools = { "go:golang.org/x/vuln/cmd/govulncheck" = "latest" }
+description = "Scan Go code and dependencies for known vulnerabilities."
+run = "govulncheck -show verbose ./..."
+
 [tasks."api:format"]
 tools = { golangci-lint = "2.12.2" }
 description = "Format the API code using golangci-lint."
