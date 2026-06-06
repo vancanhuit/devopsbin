@@ -11,13 +11,7 @@
     expectedStatuses?: number[]
   }
 
-  let {
-    method = 'GET',
-    path,
-    title,
-    description,
-    expectedStatuses = [200],
-  }: Props = $props()
+  let { method = 'GET', path, title, description, expectedStatuses = [200] }: Props = $props()
 
   let loading = $state(false)
   let result = $state<CallResult | null>(null)
@@ -33,9 +27,7 @@
 
   // A call "succeeded" (reached the server with an understood status) when the
   // status is one the endpoint is documented to return.
-  const reached = $derived(
-    result !== null && expectedStatuses.includes(result.status),
-  )
+  const reached = $derived(result !== null && expectedStatuses.includes(result.status))
 
   function statusClasses(r: CallResult): string {
     if (r.error || r.status === 0) return 'bg-rose-500/15 text-rose-300 ring-rose-500/30'
@@ -55,9 +47,7 @@
   <header class="flex items-start justify-between gap-4">
     <div>
       <div class="flex items-center gap-2">
-        <span
-          class="rounded bg-slate-800 px-2 py-0.5 font-mono text-xs font-semibold text-sky-300"
-        >
+        <span class="rounded bg-slate-800 px-2 py-0.5 font-mono text-xs font-semibold text-sky-300">
           {method}
         </span>
         <h2 class="text-base font-semibold text-slate-100">{title}</h2>
@@ -80,7 +70,7 @@
       <div class="flex flex-wrap items-center gap-2 text-xs">
         <span
           class="rounded-full px-2.5 py-0.5 font-mono font-semibold ring-1 ring-inset {statusClasses(
-            result,
+            result
           )}"
         >
           {result.error ? 'ERR' : result.status}
@@ -91,8 +81,8 @@
         <span class="ml-auto font-mono text-slate-500">{result.durationMs} ms</span>
       </div>
       <pre
-        class="max-h-64 overflow-auto rounded-lg bg-slate-950/80 p-3 font-mono text-xs leading-relaxed text-slate-300 ring-1 ring-slate-800"
-      >{result.error ?? pretty(result.body)}</pre>
+        class="max-h-64 overflow-auto rounded-lg bg-slate-950/80 p-3 font-mono text-xs leading-relaxed text-slate-300 ring-1 ring-slate-800">{result.error ??
+          pretty(result.body)}</pre>
     </div>
   {/if}
 </article>

@@ -1,0 +1,11 @@
+# Build output
+dist
+
+# Dependencies
+node_modules
+
+# Generated API client — owned by openapi-generator-cli (mise run web:generate)
+src/lib/generated
+
+# Lockfile
+bun.lock

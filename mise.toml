@@ -43,6 +43,24 @@ description = "Run the frontend dev server with API proxy."
 dir = "web"
 run = "bun run dev"
 
+[tasks."web:lint"]
+description = "Lint the frontend code with ESLint."
+dir = "web"
+depends = ["web:install"]
+run = "bun run lint"
+
+[tasks."web:format"]
+description = "Format the frontend code with Prettier."
+dir = "web"
+depends = ["web:install"]
+run = "bun run fmt"
+
+[tasks."web:format:check"]
+description = "Check frontend formatting with Prettier."
+dir = "web"
+depends = ["web:install"]
+run = "bun run fmt:check"
+
 [tasks."api:run"]
 description = "Run the API server."
 depends = ["api:build"]

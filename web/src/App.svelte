@@ -73,9 +73,8 @@
 
     <footer class="mt-12 border-t border-slate-800 pt-6 text-xs text-slate-500">
       Requests are proxied to the API base
-      <code class="font-mono text-slate-400">/api/v1</code>. Configure the backend
-      origin via <code class="font-mono text-slate-400">VITE_API_PROXY_TARGET</code>.
+      <code class="font-mono text-slate-400">/api/v1</code>. Configure the backend origin via
+      <code class="font-mono text-slate-400">VITE_API_PROXY_TARGET</code>.
     </footer>
   </div>
 </div>
-
