@@ -1,44 +1,6 @@
 <script lang="ts">
   import EndpointCard from './lib/EndpointCard.svelte'
-
-  interface Endpoint {
-    method: string
-    path: string
-    title: string
-    description: string
-    expectedStatuses: number[]
-  }
-
-  const endpoints: Endpoint[] = [
-    {
-      method: 'GET',
-      path: '/livez',
-      title: 'Liveness',
-      description: 'Process-only liveness check. Always 200 while the process runs.',
-      expectedStatuses: [200],
-    },
-    {
-      method: 'GET',
-      path: '/readyz',
-      title: 'Readiness',
-      description: 'Reports whether the service is ready to receive traffic (503 when not).',
-      expectedStatuses: [200, 503],
-    },
-    {
-      method: 'GET',
-      path: '/startupz',
-      title: 'Startup',
-      description: 'Reports whether startup has completed (503 while still starting).',
-      expectedStatuses: [200, 503],
-    },
-    {
-      method: 'GET',
-      path: '/version',
-      title: 'Version',
-      description: 'Build and version metadata for the running binary.',
-      expectedStatuses: [200],
-    },
-  ]
+  import { endpoints } from './lib/api'
 </script>
 
 <div class="min-h-screen bg-slate-950 text-slate-100">

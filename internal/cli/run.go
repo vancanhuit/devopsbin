@@ -88,6 +88,13 @@ func newRunCmd() *cli.Command {
 				ReadTimeout:  cfg.Http.ReadTimeout,
 				WriteTimeout: cfg.Http.WriteTimeout,
 				IdleTimeout:  cfg.Http.IdleTimeout,
+				// Bound the header read separately from the body so a slow
+				// client cannot hold a connection open by trickling headers
+				// (Slowloris). Reuse ReadTimeout as the upper bound.
+				ReadHeaderTimeout: cfg.Http.ReadTimeout,
+				// Cap request header size (default 1 MiB) to reject header
+				// bombs before they consume memory.
+				MaxHeaderBytes: 1 << 20,
 			}
 
 			serveErr := make(chan error, 1)
