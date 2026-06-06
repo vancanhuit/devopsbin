@@ -26,6 +26,11 @@ jobs:
           install: true
           cache: true
 
+      # Provides a docker-container builder so the dev image build can export
+      # and import the type=local BuildKit cache (the default docker driver
+      # cannot). Mirrors the default builder used on dev hosts.
+      - uses: docker/setup-buildx-action@v3
+
       # mise-action caches the toolchains themselves; these cache the package
       # and build artifacts so dependency downloads and recompiles are reused.
       - name: Cache Go modules and build cache
@@ -45,6 +50,17 @@ jobs:
           key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
           restore-keys: |
             ${{ runner.os }}-bun-
+
+      # BuildKit layer cache for the dev image built by the smoke test. Keyed on
+      # the Dockerfile and dependency manifests so it invalidates when the build
+      # inputs change, with a prefix fallback for partial reuse.
+      - name: Cache Docker buildx layers
+        uses: actions/cache@v5
+        with:
+          path: .cache/buildx
+          key: ${{ runner.os }}-buildx-${{ hashFiles('Dockerfile', 'go.sum', '**/bun.lock', 'mise.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
 
       - name: Generate OpenAPI code for frontend
         run: mise run web:generate && git diff --exit-code .

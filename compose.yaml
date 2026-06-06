@@ -64,6 +64,13 @@ services:
         VERSION: ${VERSION:-dev}
         COMMIT: ${COMMIT:-none}
         BUILD_TIME: ${BUILD_TIME:-unknown}
+      # Persisted BuildKit layer cache so repeat builds (local and CI) reuse
+      # work. Requires a docker-container builder, which is the default driver
+      # on dev hosts and provisioned in CI.
+      cache_from:
+        - type=local,src=.cache/buildx
+      cache_to:
+        - type=local,dest=.cache/buildx,mode=max
     command:
       - run
     environment:
