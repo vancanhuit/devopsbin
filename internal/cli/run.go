@@ -15,6 +15,7 @@ import (
 	"github.com/vancanhuit/devopsbin/internal/config"
 	"github.com/vancanhuit/devopsbin/internal/httpapi"
 	"github.com/vancanhuit/devopsbin/internal/logging"
+	"github.com/vancanhuit/devopsbin/web"
 )
 
 func newRunCmd() *cli.Command {
@@ -37,8 +38,14 @@ func newRunCmd() *cli.Command {
 			ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 			defer stop()
 
+			indexHTML, err := web.IndexHTML()
+			if err != nil {
+				return err
+			}
+
 			api := httpapi.NewServer(
 				httpapi.WithLogger(logger),
+				httpapi.WithSPA(web.DistFS(), indexHTML),
 				httpapi.WithBuildInfo(httpapi.BuildInfo{
 					Service:   "devopsbin-api",
 					Version:   version,

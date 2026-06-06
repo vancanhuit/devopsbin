@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"io/fs"
 	"log/slog"
 	"runtime"
 	"time"
@@ -26,6 +27,8 @@ type BuildInfo struct {
 type Server struct {
 	build         BuildInfo
 	logger        *slog.Logger
+	spaFS         fs.FS
+	spaIndex      []byte
 	readyChecks   map[string]Check
 	startupChecks map[string]Check
 }
@@ -45,6 +48,17 @@ func WithBuildInfo(b BuildInfo) Option {
 func WithLogger(logger *slog.Logger) Option {
 	return func(s *Server) {
 		s.logger = logger
+	}
+}
+
+// WithSPA serves an embedded single-page app: distFS must be rooted at the SPA
+// build output (containing index.html and assets/), and indexHTML is the shell
+// served at `/` and as the client-side routing fallback. When unset, no static
+// assets are served and the router exposes only the API.
+func WithSPA(distFS fs.FS, indexHTML []byte) Option {
+	return func(s *Server) {
+		s.spaFS = distFS
+		s.spaIndex = indexHTML
 	}
 }
 

@@ -20,6 +20,21 @@ run = "golangci-lint run -v ./internal/..."
 description = "Format the API code using golangci-lint."
 run = "golangci-lint run -v ./internal/... --fix"
 
+[tasks."web:install"]
+description = "Install frontend dependencies."
+dir = "web"
+run = "bun install"
+
+[tasks."web:build"]
+description = "Build the frontend SPA bundle (embedded into the API binary)."
+dir = "web"
+run = "bun run build"
+
+[tasks."web:dev"]
+description = "Run the frontend dev server with API proxy."
+dir = "web"
+run = "bun run dev"
+
 [tasks."api:run"]
 description = "Run the API server."
 depends = ["api:build"]
