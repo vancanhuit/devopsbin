@@ -1,0 +1,16 @@
+version: "2"
+
+linters:
+  exclusions:
+    # Skip files carrying the standard "// Code generated ... DO NOT EDIT."
+    # header (e.g. oapi-codegen output).
+    generated: strict
+    # Belt-and-suspenders: also skip by the .gen.go naming convention.
+    paths:
+      - ".*\\.gen\\.go$"
+
+formatters:
+  exclusions:
+    generated: strict
+    paths:
+      - ".*\\.gen\\.go$"
