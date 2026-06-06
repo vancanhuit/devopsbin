@@ -25,12 +25,13 @@ type BuildInfo struct {
 // Server is a concrete implementation of StrictServerInterface backing the
 // runtime, health probe, and build metadata endpoints.
 type Server struct {
-	build         BuildInfo
-	logger        *slog.Logger
-	spaFS         fs.FS
-	spaIndex      []byte
-	readyChecks   map[string]Check
-	startupChecks map[string]Check
+	build          BuildInfo
+	logger         *slog.Logger
+	spaFS          fs.FS
+	spaIndex       []byte
+	readyChecks    map[string]Check
+	startupChecks  map[string]Check
+	requestTimeout time.Duration
 }
 
 // Option configures a Server.
@@ -73,6 +74,14 @@ func WithReadinessCheck(name string, c Check) Option {
 func WithStartupCheck(name string, c Check) Option {
 	return func(s *Server) {
 		s.startupChecks[name] = c
+	}
+}
+
+// WithRequestTimeout sets the per-request handling timeout enforced by the
+// router middleware. A non-positive value falls back to the router default.
+func WithRequestTimeout(d time.Duration) Option {
+	return func(s *Server) {
+		s.requestTimeout = d
 	}
 }
 

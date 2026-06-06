@@ -263,3 +263,23 @@ func TestUnknownRoute(t *testing.T) {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusNotFound)
 	}
 }
+
+func TestSecurityHeaders(t *testing.T) {
+	h := httpapi.NewServer().Handler()
+
+	rec := doGet(t, h, "/api/v1/livez")
+
+	want := map[string]string{
+		"X-Content-Type-Options": "nosniff",
+		"X-Frame-Options":        "DENY",
+		"Referrer-Policy":        "no-referrer",
+	}
+	for header, value := range want {
+		if got := rec.Header().Get(header); got != value {
+			t.Errorf("%s = %q, want %q", header, got, value)
+		}
+	}
+	if csp := rec.Header().Get("Content-Security-Policy"); csp == "" {
+		t.Error("Content-Security-Policy header is missing")
+	}
+}

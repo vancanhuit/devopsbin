@@ -79,6 +79,7 @@ func newRunCmd() *cli.Command {
 				httpapi.WithReadinessCheck("redis", httpapi.PingCheck(rdb, dependencyCheckTimeout)),
 				httpapi.WithStartupCheck("postgres", httpapi.PingCheck(db, dependencyCheckTimeout)),
 				httpapi.WithStartupCheck("redis", httpapi.PingCheck(rdb, dependencyCheckTimeout)),
+				httpapi.WithRequestTimeout(cfg.Http.RequestTimeout),
 			)
 
 			srv := &http.Server{

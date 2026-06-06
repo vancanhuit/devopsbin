@@ -34,6 +34,7 @@ type HttpConfig struct {
 	WriteTimeout    time.Duration `env:"WRITE_TIMEOUT" envDefault:"10s" json:"write_timeout"`
 	IdleTimeout     time.Duration `env:"IDLE_TIMEOUT" envDefault:"60s" json:"idle_timeout"`
 	ShutdownTimeout time.Duration `env:"SHUTDOWN_TIMEOUT" envDefault:"15s" json:"shutdown_timeout"`
+	RequestTimeout  time.Duration `env:"REQUEST_TIMEOUT" envDefault:"60s" json:"request_timeout"`
 }
 
 type PostgresConfig struct {
@@ -106,6 +107,9 @@ func (c Config) Validate() error {
 	}
 	if c.Http.ShutdownTimeout <= 0 {
 		return fmt.Errorf("config: shutdown_timeout must be positive")
+	}
+	if c.Http.RequestTimeout <= 0 {
+		return fmt.Errorf("config: request_timeout must be positive")
 	}
 
 	return nil
