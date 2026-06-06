@@ -85,6 +85,9 @@ jobs:
       - name: Run frontend linters
         run: mise run web:lint
 
+      - name: Type-check frontend code
+        run: mise run web:check
+
       - name: Build frontend assets
         run: mise run web:build
 

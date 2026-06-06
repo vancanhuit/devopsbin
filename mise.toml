@@ -69,6 +69,12 @@ dir = "web"
 depends = ["web:install"]
 run = "bun run fmt:check"
 
+[tasks."web:check"]
+description = "Run svelte-check on the frontend code."
+dir = "web"
+depends = ["web:install"]
+run = "bun run check"
+
 [tasks."api:run"]
 description = "Run the API server."
 depends = ["api:build"]
