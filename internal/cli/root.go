@@ -37,6 +37,7 @@ func newApp() *cli.Command {
 		Version: fmt.Sprintf("%s (commit %s, built %s)", version, commit, buildTime),
 		Commands: []*cli.Command{
 			newRunCmd(),
+			newHealthcheckCmd(),
 		},
 	}
 }

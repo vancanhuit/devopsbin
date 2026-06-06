@@ -51,4 +51,6 @@ jobs:
         run: mise --env test run api:test:integration
 
       - name: Build binary
-        run: mise run api:build
+        run: |
+          mise run api:build
+          ./bin/devopsbin --version

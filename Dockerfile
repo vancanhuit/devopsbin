@@ -64,4 +64,9 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 FROM gcr.io/distroless/static-debian13 AS runtime
 COPY --from=builder /app/bin/devopsbin /devopsbin
 
+# distroless ships no shell or curl/wget, so probe via the binary's own
+# healthcheck subcommand (exec form -- there is no shell to interpret it).
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+    CMD ["/devopsbin", "healthcheck"]
+
 ENTRYPOINT ["/devopsbin"]
