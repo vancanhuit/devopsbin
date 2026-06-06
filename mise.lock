@@ -43,3 +43,7 @@ backend = "go:github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen"
 [[tools.golangci-lint]]
 version = "2.12.2"
 backend = "aqua:golangci/golangci-lint"
+
+[[tools.java]]
+version = "temurin-25.0.3+9.0.LTS"
+backend = "core:java"

@@ -2,37 +2,21 @@
 //
 // All endpoints live under the /api/v1 base path; in development Vite proxies
 // that prefix to the Go backend (see vite.config.ts).
+//
+// Response types are auto-generated from `api/openapi.yaml` by
+// openapi-generator-cli (see `web/openapitools.json` and `mise run
+// web:generate`). Do not edit files under `./generated/` by hand; re-run the
+// generator after changing the spec.
+
+export type {
+  DependencyCheck,
+  LivezResponse,
+  ReadyzResponse,
+  StartupzResponse,
+  VersionResponse,
+} from './generated'
 
 export const API_BASE = '/api/v1'
-
-export type DependencyCheckStatus = 'ok' | 'error' | 'skipped'
-
-export interface DependencyCheck {
-  status: DependencyCheckStatus
-  message?: string
-}
-
-export interface LivezResponse {
-  status: 'ok'
-}
-
-export interface ReadyzResponse {
-  status: 'ready' | 'not_ready'
-  checks: Record<string, DependencyCheck>
-}
-
-export interface StartupzResponse {
-  status: 'started' | 'starting'
-  checks: Record<string, DependencyCheck>
-}
-
-export interface VersionResponse {
-  service: string
-  version: string
-  git_sha: string
-  build_time: string
-  go_version: string
-}
 
 // CallResult captures everything the console needs to render a single request:
 // the parsed body (when JSON), the HTTP status, timing, and any error.
