@@ -10,7 +10,14 @@ run = 'oapi-codegen -config api/oapi-codegen.yaml api/openapi.yaml'
 
 [tasks."api:test:unit"]
 description = "Run unit tests for the API."
-run = "go test -v -cover ./internal/..."
+run = "go test -v -cover -race ./internal/..."
+
+[tasks."api:test:integration"]
+description = "Run integration tests against the test-profile Postgres and Redis."
+# Brings up the test stack first; tear it down afterwards with compose:test:down.
+depends = ["compose:test:up"]
+depends_post = ["compose:test:down"]
+run = "go test -cover -race -v -count=1 -tags=integration ./internal/..."
 
 [tasks."api:lint"]
 tools = { golangci-lint = "2.12.2" }
@@ -70,15 +77,23 @@ depends = ["api:build"]
 # 0. Without exec the shell itself reports the interrupt as exit 130.
 run = "exec bin/devopsbin run"
 
-[tasks."compose:up"]
+[tasks."compose:dev:up"]
 description = "Start the Docker Compose services."
 # Build metadata interpolated by compose.yaml into Docker build args. git
 # failures degrade gracefully so the values still resolve outside a checkout.
 env.VERSION = "{{ exec(command='git describe --tags --always --abbrev=0 --dirty=-dev 2>/dev/null || echo dev') }}"
 env.COMMIT = "{{ exec(command='git rev-parse --short HEAD 2>/dev/null || echo none') }}"
 env.BUILD_TIME = "{{ exec(command='date -u +%Y-%m-%dT%H:%M:%SZ') }}"
-run = "docker compose up -d --wait --build"
+run = "docker compose --profile dev up -d --wait --build"
 
-[tasks."compose:down"]
+[tasks."compose:dev:down"]
 description = "Stop the Docker Compose services."
-run = "docker compose down -v"
+run = "docker compose --profile dev down -v"
+
+[tasks."compose:test:up"]
+description = "Start the Docker Compose services for testing."
+run = "docker compose --profile test up -d --wait"
+
+[tasks."compose:test:down"]
+description = "Stop the Docker Compose services for testing."
+run = "docker compose --profile test down -v"

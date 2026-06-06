@@ -176,6 +176,45 @@ func TestGetStartupz_Starting(t *testing.T) {
 	}
 }
 
+func TestGetStartupz_SkippedIsStarted(t *testing.T) {
+	h := httpapi.NewServer(
+		httpapi.WithStartupCheck("migrations", skippedCheck),
+	).Handler()
+
+	rec := doGet(t, h, "/api/v1/startupz")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d (skipped must not block startup)", rec.Code, http.StatusOK)
+	}
+	body := decode[httpapi.StartupzResponse](t, rec)
+	if body.Status != httpapi.Started {
+		t.Errorf("status = %q, want %q", body.Status, httpapi.Started)
+	}
+}
+
+func TestGetStartupz_MixedFailsStarting(t *testing.T) {
+	h := httpapi.NewServer(
+		httpapi.WithStartupCheck("postgres", okCheck),
+		httpapi.WithStartupCheck("redis", errCheck),
+	).Handler()
+
+	rec := doGet(t, h, "/api/v1/startupz")
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
+	}
+	body := decode[httpapi.StartupzResponse](t, rec)
+	if body.Status != httpapi.Starting {
+		t.Errorf("status = %q, want %q", body.Status, httpapi.Starting)
+	}
+	if redis := body.Checks["redis"]; redis.Status != httpapi.DependencyCheckStatusError {
+		t.Errorf("redis status = %q, want error", redis.Status)
+	}
+	if pg := body.Checks["postgres"]; pg.Status != httpapi.DependencyCheckStatusOk {
+		t.Errorf("postgres status = %q, want ok", pg.Status)
+	}
+}
+
 func TestGetVersion(t *testing.T) {
 	buildTime := time.Date(2026, 6, 6, 10, 0, 0, 0, time.UTC)
 	h := httpapi.NewServer(httpapi.WithBuildInfo(httpapi.BuildInfo{

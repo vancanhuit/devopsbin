@@ -12,11 +12,18 @@ import (
 
 	"github.com/urfave/cli/v3"
 
+	"github.com/vancanhuit/devopsbin/internal/cache"
 	"github.com/vancanhuit/devopsbin/internal/config"
 	"github.com/vancanhuit/devopsbin/internal/httpapi"
 	"github.com/vancanhuit/devopsbin/internal/logging"
+	"github.com/vancanhuit/devopsbin/internal/store"
 	"github.com/vancanhuit/devopsbin/web"
 )
+
+// dependencyCheckTimeout bounds each dependency ping run by the readiness and
+// startup probes so an unreachable dependency fails the check quickly instead
+// of blocking the probe on a connection attempt.
+const dependencyCheckTimeout = 2 * time.Second
 
 func newRunCmd() *cli.Command {
 	return &cli.Command{
@@ -38,6 +45,21 @@ func newRunCmd() *cli.Command {
 			ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 			defer stop()
 
+			// Connect to the backing dependencies. Both pools connect lazily,
+			// so a dependency that is temporarily down does not block startup;
+			// the readiness probe reports their live status via Ping.
+			db, err := store.New(ctx, cfg.Postgres.URL)
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+
+			rdb, err := cache.New(cfg.Redis.URL)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = rdb.Close() }()
+
 			indexHTML, err := web.IndexHTML()
 			if err != nil {
 				return err
@@ -53,6 +75,10 @@ func newRunCmd() *cli.Command {
 					BuildTime: parseBuildTime(buildTime),
 					GoVersion: runtime.Version(),
 				}),
+				httpapi.WithReadinessCheck("postgres", httpapi.PingCheck(db, dependencyCheckTimeout)),
+				httpapi.WithReadinessCheck("redis", httpapi.PingCheck(rdb, dependencyCheckTimeout)),
+				httpapi.WithStartupCheck("postgres", httpapi.PingCheck(db, dependencyCheckTimeout)),
+				httpapi.WithStartupCheck("redis", httpapi.PingCheck(rdb, dependencyCheckTimeout)),
 			)
 
 			srv := &http.Server{

@@ -29,15 +29,18 @@ COPY mise.toml mise.toml
 COPY mise.lock mise.lock
 COPY mise/ mise/
 
-RUN --mount=type=cache,target=/mise/cache mise trust && mise install
+RUN --mount=type=cache,target=/mise/cache \
+    mise trust && mise install
 
 COPY go.mod go.mod
 COPY go.sum go.sum
-RUN --mount=type=cache,target=/go/pkg/mod go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
 COPY web/package.json web/package.json
 COPY web/bun.lock web/bun.lock
-RUN --mount=type=cache,target=/root/.bun/install/cache cd web && bun install --frozen-lockfile
+RUN --mount=type=cache,target=/root/.bun/install/cache \
+    cd web && bun install --frozen-lockfile
 
 COPY api/ api/
 COPY cmd/ cmd/
