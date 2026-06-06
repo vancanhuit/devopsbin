@@ -88,6 +88,9 @@ jobs:
       - name: Type-check frontend code
         run: mise run web:check
 
+      - name: Run frontend unit tests
+        run: mise run web:test
+
       - name: Build frontend assets
         run: mise run web:build
 

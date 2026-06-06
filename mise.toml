@@ -75,6 +75,12 @@ dir = "web"
 depends = ["web:install"]
 run = "bun run check"
 
+[tasks."web:test"]
+description = "Run frontend unit tests with Vitest."
+dir = "web"
+depends = ["web:install"]
+run = "bun run test"
+
 [tasks."api:run"]
 description = "Run the API server."
 depends = ["api:build"]

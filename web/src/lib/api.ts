@@ -1,12 +1,12 @@
 // Typed client for the DevOpsBin backend runtime API.
 //
-// All endpoints live under the /api/v1 base path; in development Vite proxies
-// that prefix to the Go backend (see vite.config.ts).
-//
-// Response types are auto-generated from `api/openapi.yaml` by
-// openapi-generator-cli (see `web/openapitools.json` and `mise run
-// web:generate`). Do not edit files under `./generated/` by hand; re-run the
-// generator after changing the spec.
+// This wraps the auto-generated OpenAPI client (see ./generated, produced by
+// openapi-generator-cli via `mise run web:generate`) so the console gets typed
+// responses while still rendering documented non-2xx results (e.g. readyz 503)
+// uniformly. Do not edit files under `./generated/` by hand; re-run the
+// generator after changing `api/openapi.yaml`.
+
+import { Configuration, ResponseError, RuntimeApi, type ApiResponse } from './generated'
 
 export type {
   DependencyCheck,
@@ -16,10 +16,8 @@ export type {
   VersionResponse,
 } from './generated'
 
-export const API_BASE = '/api/v1'
-
 // CallResult captures everything the console needs to render a single request:
-// the parsed body (when JSON), the HTTP status, timing, and any error.
+// the parsed body, the HTTP status, timing, and any transport-level error.
 export interface CallResult {
   ok: boolean
   status: number
@@ -28,34 +26,70 @@ export interface CallResult {
   error?: string
 }
 
-// call performs a GET against the given API path and returns a normalized
-// CallResult. Network and parse failures are captured rather than thrown so the
-// UI can render them uniformly.
+// api targets the /api/v1 base path baked into the generated client; in
+// development Vite proxies that prefix to the Go backend (see vite.config.ts).
+const api = new RuntimeApi(new Configuration())
+
+// rawCalls maps each documented endpoint path to its generated raw call. The
+// *Raw variants return an ApiResponse, exposing both the typed body via
+// value() and the underlying Response for status and timing.
+const rawCalls: Record<string, () => Promise<ApiResponse<unknown>>> = {
+  '/livez': () => api.getLivezRaw(),
+  '/readyz': () => api.getReadyzRaw(),
+  '/startupz': () => api.getStartupzRaw(),
+  '/version': () => api.getVersionRaw(),
+}
+
+function elapsedMs(start: number): number {
+  return Math.round((performance.now() - start) * 100) / 100
+}
+
+async function parseBody(res: Response): Promise<unknown> {
+  const text = await res.text()
+  if (!text) {
+    return null
+  }
+  try {
+    return JSON.parse(text)
+  } catch {
+    return text
+  }
+}
+
+// call performs the documented request for the given API path and returns a
+// normalized CallResult. Documented non-2xx responses (e.g. readyz 503) are
+// reported with their status and parsed body; only transport failures (network
+// errors, unknown paths) set `error`.
 export async function call(path: string): Promise<CallResult> {
+  const raw = rawCalls[path]
+  if (!raw) {
+    return { ok: false, status: 0, durationMs: 0, body: null, error: `unknown endpoint: ${path}` }
+  }
+
   const start = performance.now()
   try {
-    const res = await fetch(`${API_BASE}${path}`, {
-      headers: { Accept: 'application/json' },
-    })
-    const durationMs = Math.round((performance.now() - start) * 100) / 100
-
-    let body: unknown = null
-    const text = await res.text()
-    if (text) {
-      try {
-        body = JSON.parse(text)
-      } catch {
-        body = text
+    const res = await raw()
+    return {
+      ok: res.raw.ok,
+      status: res.raw.status,
+      durationMs: elapsedMs(start),
+      body: await res.value(),
+    }
+  } catch (err) {
+    // The generated client throws ResponseError for non-2xx responses; surface
+    // those like any other documented response rather than a transport error.
+    if (err instanceof ResponseError) {
+      return {
+        ok: false,
+        status: err.response.status,
+        durationMs: elapsedMs(start),
+        body: await parseBody(err.response),
       }
     }
-
-    return { ok: res.ok, status: res.status, durationMs, body }
-  } catch (err) {
-    const durationMs = Math.round((performance.now() - start) * 100) / 100
     return {
       ok: false,
       status: 0,
-      durationMs,
+      durationMs: elapsedMs(start),
       body: null,
       error: err instanceof Error ? err.message : String(err),
     }

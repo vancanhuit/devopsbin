@@ -23,6 +23,7 @@ var envKeys = []string{
 	"HTTP_WRITE_TIMEOUT",
 	"HTTP_IDLE_TIMEOUT",
 	"HTTP_SHUTDOWN_TIMEOUT",
+	"HTTP_REQUEST_TIMEOUT",
 	"POSTGRES_URL",
 	"REDIS_URL",
 }
@@ -72,6 +73,9 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.Http.ShutdownTimeout != 15*time.Second {
 		t.Errorf("Http.ShutdownTimeout = %v, want 15s", cfg.Http.ShutdownTimeout)
 	}
+	if cfg.Http.RequestTimeout != 60*time.Second {
+		t.Errorf("Http.RequestTimeout = %v, want 60s", cfg.Http.RequestTimeout)
+	}
 	if cfg.Postgres.URL != "postgres://user:password@localhost:5432/dbname?sslmode=disable" {
 		t.Errorf("Postgres.URL = %q, want default DSN", cfg.Postgres.URL)
 	}
@@ -92,6 +96,7 @@ func TestLoad_EnvOverrides(t *testing.T) {
 	t.Setenv("HTTP_WRITE_TIMEOUT", "2s")
 	t.Setenv("HTTP_IDLE_TIMEOUT", "3s")
 	t.Setenv("HTTP_SHUTDOWN_TIMEOUT", "4s")
+	t.Setenv("HTTP_REQUEST_TIMEOUT", "30s")
 	t.Setenv("POSTGRES_URL", "postgres://u:p@h:5432/db?sslmode=require")
 	t.Setenv("REDIS_URL", "redis://h:6379/0")
 
@@ -114,6 +119,7 @@ func TestLoad_EnvOverrides(t *testing.T) {
 			WriteTimeout:    2 * time.Second,
 			IdleTimeout:     3 * time.Second,
 			ShutdownTimeout: 4 * time.Second,
+			RequestTimeout:  30 * time.Second,
 		},
 		Postgres: config.PostgresConfig{URL: "postgres://u:p@h:5432/db?sslmode=require"},
 		Redis:    config.RedisConfig{URL: "redis://h:6379/0"},
@@ -145,7 +151,7 @@ func TestValidate(t *testing.T) {
 	base := func() config.Config {
 		return config.Config{
 			App:  config.AppConfig{Environment: config.EnvProd, LogLevel: "info"},
-			Http: config.HttpConfig{Addr: ":8080", ReadTimeout: time.Second, WriteTimeout: time.Second, IdleTimeout: time.Second, ShutdownTimeout: time.Second},
+			Http: config.HttpConfig{Addr: ":8080", ReadTimeout: time.Second, WriteTimeout: time.Second, IdleTimeout: time.Second, ShutdownTimeout: time.Second, RequestTimeout: time.Second},
 		}
 	}
 
@@ -160,6 +166,7 @@ func TestValidate(t *testing.T) {
 		{"zero write timeout", func(c *config.Config) { c.Http.WriteTimeout = 0 }, true},
 		{"zero idle timeout", func(c *config.Config) { c.Http.IdleTimeout = 0 }, true},
 		{"zero shutdown timeout", func(c *config.Config) { c.Http.ShutdownTimeout = 0 }, true},
+		{"zero request timeout", func(c *config.Config) { c.Http.RequestTimeout = 0 }, true},
 		{"bad env", func(c *config.Config) { c.App.Environment = "qa" }, true},
 		{"bad log level", func(c *config.Config) { c.App.LogLevel = "trace" }, true},
 		{"invalid postgres url", func(c *config.Config) { c.Postgres.URL = "://bad" }, true},
