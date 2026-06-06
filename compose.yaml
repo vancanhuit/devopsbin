@@ -1,0 +1,45 @@
+services:
+  postgres:
+    image: postgres:18.4-trixie
+    environment:
+      POSTGRES_USER: devopsbin
+      POSTGRES_PASSWORD: devopsbin
+      POSTGRES_DB: devopsbin
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "devopsbin"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:8.8.0-trixie
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VERSION: ${VERSION:-dev}
+        COMMIT: ${COMMIT:-none}
+        BUILD_TIME: ${BUILD_TIME:-unknown}
+    command:
+      - run
+    environment:
+      POSTGRES_URL: postgres://devopsbin:devopsbin@postgres:5432/devopsbin?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy

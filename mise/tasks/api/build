@@ -6,9 +6,12 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-VERSION=$(git describe --tags --always --abbrev=0 --dirty=-dev 2>/dev/null || echo "unknown")
-COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+# Prefer values injected via the environment (e.g. Docker build args) and fall
+# back to git when building on a host with the repository checked out. Inside
+# the image .git is not copied, so the env values are the source of truth.
+BUILD_TIME="${BUILD_TIME:-$(date -u +"%Y-%m-%dT%H:%M:%SZ")}"
+VERSION="${VERSION:-$(git describe --tags --always --abbrev=0 --dirty=-dev 2>/dev/null || echo "unknown")}"
+COMMIT="${COMMIT:-$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")}"
 
 go build -ldflags="-s -w -v \
     -X 'github.com/vancanhuit/devopsbin/internal/cli.version=${VERSION}' \
