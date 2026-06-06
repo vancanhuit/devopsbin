@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+#MISE description="Build the API server with embedded version information."
+
+
+set -euo pipefail
+IFS=$'\n\t'
+
+BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+VERSION=$(git describe --tags --always --abbrev=0 --dirty=-dev 2>/dev/null || echo "unknown")
+COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+
+go build -ldflags="-s -w -v \
+    -X 'github.com/vancanhuit/devopsbin/internal/cli.version=${VERSION}' \
+    -X 'github.com/vancanhuit/devopsbin/internal/cli.commit=${COMMIT}' \
+    -X 'github.com/vancanhuit/devopsbin/internal/cli.buildTime=${BUILD_TIME}'" \
+    -trimpath \
+    -o bin/devopsbin ./cmd/devopsbin

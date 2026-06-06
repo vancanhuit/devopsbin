@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -30,15 +31,18 @@ func newRunCmd() *cli.Command {
 			logger.Info("starting devopsbin", "env", cfg.App.Environment, "addr", cfg.Http.Addr)
 
 			// Cancel the run context on SIGINT/SIGTERM so the server can
-			// shut down gracefully.
-			ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
+			// shut down gracefully. os.Interrupt is the portable alias for
+			// syscall.SIGINT (and works on Windows); SIGTERM has no os
+			// equivalent so we name it directly.
+			ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 			defer stop()
 
 			api := httpapi.NewServer(httpapi.WithBuildInfo(httpapi.BuildInfo{
 				Service:   "devopsbin-api",
 				Version:   version,
 				GitSHA:    commit,
-				BuildTime: parseBuildTime(buildDate),
+				BuildTime: parseBuildTime(buildTime),
+				GoVersion: runtime.Version(),
 			}))
 
 			srv := &http.Server{
@@ -60,16 +64,40 @@ func newRunCmd() *cli.Command {
 
 			select {
 			case err := <-serveErr:
+				// The server stopped on its own (e.g. failed to bind the
+				// listen address) before any shutdown signal arrived.
 				return err
 			case <-ctx.Done():
-				logger.Info("shutdown signal received, draining connections")
-				shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.Http.ShutdownTimeout)
+				logger.Info("shutdown signal received, draining connections",
+					"timeout", cfg.Http.ShutdownTimeout)
+
+				// Restore the default signal handling so a second
+				// SIGINT/SIGTERM during draining terminates the process
+				// immediately instead of being swallowed.
+				stop()
+
+				shutdownCtx, cancel := context.WithTimeout(
+					context.Background(), cfg.Http.ShutdownTimeout)
 				defer cancel()
+
 				if err := srv.Shutdown(shutdownCtx); err != nil {
+					// Graceful drain exceeded the deadline (or otherwise
+					// failed). Force-close any remaining connections so the
+					// process can exit instead of hanging.
+					logger.Error("graceful shutdown failed, forcing close", "error", err)
+					if closeErr := srv.Close(); closeErr != nil {
+						return errors.Join(err, closeErr)
+					}
+					return err
+				}
+
+				// Surface any error the serving goroutine reported while we
+				// were shutting down.
+				if err := <-serveErr; err != nil {
 					return err
 				}
 				logger.Info("server stopped cleanly")
-				return <-serveErr
+				return nil
 			}
 		},
 	}

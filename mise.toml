@@ -19,3 +19,11 @@ run = "golangci-lint run -v ./internal/..."
 [tasks."api:format"]
 description = "Format the API code using golangci-lint."
 run = "golangci-lint run -v ./internal/... --fix"
+
+[tasks."api:run"]
+description = "Run the API server."
+depends = ["api:build"]
+# exec replaces the wrapping shell with the binary so a terminal Ctrl-C
+# (group SIGINT) is delivered straight to the server, which drains and exits
+# 0. Without exec the shell itself reports the interrupt as exit 130.
+run = "exec bin/devopsbin run"

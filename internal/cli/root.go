@@ -16,7 +16,7 @@ import (
 var (
 	version   = "dev"
 	commit    = "none"
-	buildDate = "unknown"
+	buildTime = "unknown"
 )
 
 // Execute is the entry point used by main(). It builds the command tree and
@@ -34,7 +34,7 @@ func newApp() *cli.Command {
 	return &cli.Command{
 		Name:    "devopsbin",
 		Usage:   "DevOpsBin backend service",
-		Version: fmt.Sprintf("%s (commit %s, built %s)", version, commit, buildDate),
+		Version: fmt.Sprintf("%s (commit %s, built %s)", version, commit, buildTime),
 		Commands: []*cli.Command{
 			newRunCmd(),
 		},
