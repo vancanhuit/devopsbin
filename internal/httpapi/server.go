@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"log/slog"
 	"runtime"
 	"time"
 )
@@ -24,6 +25,7 @@ type BuildInfo struct {
 // runtime, health probe, and build metadata endpoints.
 type Server struct {
 	build         BuildInfo
+	logger        *slog.Logger
 	readyChecks   map[string]Check
 	startupChecks map[string]Check
 }
@@ -35,6 +37,14 @@ type Option func(*Server)
 func WithBuildInfo(b BuildInfo) Option {
 	return func(s *Server) {
 		s.build = b
+	}
+}
+
+// WithLogger sets the structured logger used for request logging. When unset,
+// the server falls back to slog.Default().
+func WithLogger(logger *slog.Logger) Option {
+	return func(s *Server) {
+		s.logger = logger
 	}
 }
 
@@ -60,6 +70,9 @@ func NewServer(opts ...Option) *Server {
 	}
 	for _, opt := range opts {
 		opt(s)
+	}
+	if s.logger == nil {
+		s.logger = slog.Default()
 	}
 	if s.build.GoVersion == "" {
 		s.build.GoVersion = runtime.Version()

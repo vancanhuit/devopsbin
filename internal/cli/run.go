@@ -37,13 +37,16 @@ func newRunCmd() *cli.Command {
 			ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 			defer stop()
 
-			api := httpapi.NewServer(httpapi.WithBuildInfo(httpapi.BuildInfo{
-				Service:   "devopsbin-api",
-				Version:   version,
-				GitSHA:    commit,
-				BuildTime: parseBuildTime(buildTime),
-				GoVersion: runtime.Version(),
-			}))
+			api := httpapi.NewServer(
+				httpapi.WithLogger(logger),
+				httpapi.WithBuildInfo(httpapi.BuildInfo{
+					Service:   "devopsbin-api",
+					Version:   version,
+					GitSHA:    commit,
+					BuildTime: parseBuildTime(buildTime),
+					GoVersion: runtime.Version(),
+				}),
+			)
 
 			srv := &http.Server{
 				Addr:         cfg.Http.Addr,
