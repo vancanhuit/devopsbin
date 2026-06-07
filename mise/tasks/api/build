@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-#MISE description="Build the API server with embedded version information."
-#MISE depends=["web:build"]
+# [MISE] description="Build the API server with embedded version information."
+# [MISE] depends=["web:build"]
 #
-#USAGE flag "-o --output <output>" help="Output binary path" default="bin/devopsbin"
-#USAGE flag "--os <os>" help="Target GOOS (defaults to the host)" default=""
-#USAGE flag "--arch <arch>" help="Target GOARCH (defaults to the host)" default=""
-#USAGE flag "--dry-run" help="Print the expanded go build command without running it"
+# [USAGE] flag "-o --output <output>" help="Output binary path" default="bin/devopsbin"
+# [USAGE] flag "--os <os>" help="Target GOOS (defaults to the host)" default=""
+# [USAGE] flag "--arch <arch>" help="Target GOARCH (defaults to the host)" default=""
+# [USAGE] flag "--dry-run" help="Print the expanded go build command without running it"
 
 set -euo pipefail
 IFS=$'\n\t'
