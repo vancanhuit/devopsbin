@@ -52,6 +52,16 @@ fi
 # 10 GiB Actions cache quota. mode=max is intentional: the work worth caching
 # lives in the discarded `builder` stage, so mode=min would export almost
 # nothing useful.
+#
+# A multi-platform mode=max export may log lines like:
+#   (*service).Write failed: rpc error: code = Unavailable desc = ref
+#   layer-sha256:... locked for 40ms
+# These are benign. Both platform passes export their (often identical,
+# platform-agnostic) layers concurrently and race to write the same blob; the
+# content store briefly locks the ref and returns Unavailable to the second
+# writer, which BuildKit then retries successfully. The build still exits 0 --
+# and `set -euo pipefail` above guarantees a genuine export failure aborts the
+# script before the cache rotate below, so a partial cache is never promoted.
 cache_dir=".cache/buildx"
 cache_new=".cache/buildx-new"
 cmd=(
