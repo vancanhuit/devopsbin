@@ -41,3 +41,25 @@ func IndexHTML() ([]byte, error) {
 	}
 	return b, nil
 }
+
+// SwaggerUIFS returns the embedded Swagger UI console rooted at `dist/swagger/`
+// (its index.html plus the vendored swagger-ui bundle and stylesheet). The
+// directory is produced by the web build's vendor step (scripts/vendor-docs.mjs).
+func SwaggerUIFS() (fs.FS, error) {
+	sub, err := fs.Sub(distFS, "dist/swagger")
+	if err != nil {
+		return nil, fmt.Errorf("web: locate dist/swagger dir: %w", err)
+	}
+	return sub, nil
+}
+
+// RedocFS returns the embedded Redoc console rooted at `dist/redoc/` (its
+// index.html plus the vendored redoc standalone bundle). The directory is
+// produced by the web build's vendor step (scripts/vendor-docs.mjs).
+func RedocFS() (fs.FS, error) {
+	sub, err := fs.Sub(distFS, "dist/redoc")
+	if err != nil {
+		return nil, fmt.Errorf("web: locate dist/redoc dir: %w", err)
+	}
+	return sub, nil
+}

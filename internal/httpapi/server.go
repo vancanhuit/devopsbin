@@ -29,6 +29,9 @@ type Server struct {
 	logger         *slog.Logger
 	spaFS          fs.FS
 	spaIndex       []byte
+	docsSpec       []byte
+	swaggerFS      fs.FS
+	redocFS        fs.FS
 	readyChecks    map[string]Check
 	startupChecks  map[string]Check
 	requestTimeout time.Duration
@@ -60,6 +63,19 @@ func WithSPA(distFS fs.FS, indexHTML []byte) Option {
 	return func(s *Server) {
 		s.spaFS = distFS
 		s.spaIndex = indexHTML
+	}
+}
+
+// WithDocs serves the API documentation: the raw OpenAPI document at
+// /api/v1/openapi.yaml, the Swagger UI console at /swagger, and the Redoc
+// console at /redoc. spec is the OpenAPI document bytes; swaggerFS and redocFS
+// must each be rooted at the corresponding UI build output (containing an
+// index.html). When unset, no documentation routes are registered.
+func WithDocs(spec []byte, swaggerFS, redocFS fs.FS) Option {
+	return func(s *Server) {
+		s.docsSpec = spec
+		s.swaggerFS = swaggerFS
+		s.redocFS = redocFS
 	}
 }
 

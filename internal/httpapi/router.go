@@ -94,9 +94,13 @@ func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 // Handler returns an http.Handler routing the OpenAPI endpoints to this Server,
 // wrapped with the standard middleware stack and mounted under the API base
 // path. When the server is configured with WithSPA, the embedded console is
-// served at `/` alongside the API.
+// served at `/` alongside the API. When configured with WithDocs, the OpenAPI
+// document and the Swagger UI / Redoc consoles are served too.
 func (s *Server) Handler() http.Handler {
 	r := NewRouter(s, s.logger, s.requestTimeout)
+	if s.docsSpec != nil {
+		mountDocs(r, s.docsSpec, s.build.Version, s.swaggerFS, s.redocFS)
+	}
 	if s.spaFS != nil {
 		mountSPA(r, s.spaFS, s.spaIndex, s.logger)
 	}

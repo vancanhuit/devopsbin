@@ -12,6 +12,7 @@ import (
 
 	"github.com/urfave/cli/v3"
 
+	openapispec "github.com/vancanhuit/devopsbin/api"
 	"github.com/vancanhuit/devopsbin/internal/cache"
 	"github.com/vancanhuit/devopsbin/internal/config"
 	"github.com/vancanhuit/devopsbin/internal/httpapi"
@@ -65,9 +66,20 @@ func newRunCmd() *cli.Command {
 				return err
 			}
 
+			swaggerFS, err := web.SwaggerUIFS()
+			if err != nil {
+				return err
+			}
+
+			redocFS, err := web.RedocFS()
+			if err != nil {
+				return err
+			}
+
 			api := httpapi.NewServer(
 				httpapi.WithLogger(logger),
 				httpapi.WithSPA(web.DistFS(), indexHTML),
+				httpapi.WithDocs(openapispec.Spec(), swaggerFS, redocFS),
 				httpapi.WithBuildInfo(httpapi.BuildInfo{
 					Service:   "devopsbin-api",
 					Version:   version,
