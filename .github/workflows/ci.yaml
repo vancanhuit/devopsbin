@@ -199,6 +199,10 @@ jobs:
     permissions:
       contents: read
       packages: write
+      # Mint a short-lived OIDC token and write the provenance attestation to
+      # the GitHub attestations store for the image pushed on main.
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v6.0.3
         with:
@@ -243,11 +247,17 @@ jobs:
           echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
           echo "version=$(mise env --json | jq -r .VERSION)" >> "$GITHUB_OUTPUT"
 
-      # Pull requests: build the multi-platform image and export an OCI archive
-      # without contacting a registry.
+      # Pull requests: build the multi-platform image with the same SBOM and
+      # provenance attestations as a release and export it as an OCI archive
+      # without contacting a registry. There is no pushed digest to sign and
+      # publish, so the metadata file is archived for inspection instead.
       - name: Build OCI image
         if: github.event_name == 'pull_request'
-        run: mise run docker:build
+        run: |
+          mise run docker:build \
+            --sbom \
+            --provenance \
+            --metadata-file dist/metadata.json
 
       - name: Upload OCI image artifact
         if: github.event_name == 'pull_request'
@@ -257,6 +267,14 @@ jobs:
           # contents), so the on-disk filename stays stable.
           name: devopsbin-oci-${{ steps.meta.outputs.version }}
           path: dist/devopsbin.oci.tar
+          if-no-files-found: error
+
+      - name: Upload OCI build metadata artifact
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: devopsbin-oci-metadata-${{ steps.meta.outputs.version }}
+          path: dist/metadata.json
           if-no-files-found: error
 
       # Pushes to main: authenticate to GHCR and push the image tagged with the
@@ -273,9 +291,25 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push image
+        id: build
         if: github.event_name == 'push'
         run: |
           mise run docker:build --push \
             --image "${{ steps.meta.outputs.image }}" \
             --tag edge \
-            --tag "${{ steps.meta.outputs.version }}"
+            --tag "${{ steps.meta.outputs.version }}" \
+            --sbom \
+            --provenance \
+            --metadata-file dist/metadata.json
+          echo "digest=$(jq -r '.["containerimage.digest"]' dist/metadata.json)" >> "$GITHUB_OUTPUT"
+
+      # Sign a build-provenance attestation for the exact image digest just
+      # pushed and publish it to the registry so consumers can verify the image
+      # was built by this workflow (gh attestation verify / cosign).
+      - name: Attest image provenance
+        if: github.event_name == 'push'
+        uses: actions/attest-build-provenance@v4.1.0
+        with:
+          subject-name: ${{ steps.meta.outputs.image }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true

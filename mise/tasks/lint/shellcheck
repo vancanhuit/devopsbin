@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# [MISE] description="Run shellcheck on bash scripts (defaults to the file tasks and shared libs)."
+# [MISE] tools={ shellcheck = "0.11.0" }
+#
+# Day-to-day helper: pass specific scripts to check, or run with no args to
+# cover the shared *.sh libs plus every bash file task (discovered by shebang).
+# -x lets shellcheck follow `source` directives into the libs.
+#
+# [USAGE] arg "[file]" var=#true help="Shell scripts to check (default: mise/lib/*.sh and the bash file tasks)"
+
+set -euo pipefail
+IFS=$'\n\t'
+
+# The variadic positional arg arrives as a shell-escaped, space-separated list.
+eval "files=(${usage_file:-})"
+
+# shellcheck disable=SC2154 # `files` is populated by the eval above.
+if [ "${#files[@]}" -eq 0 ]; then
+    # Default target set: shared libs plus every file task with a bash shebang.
+    mapfile -t files < <(printf '%s\n' mise/lib/*.sh; grep -rlE '^#!.*bash' mise/tasks)
+fi
+
+shellcheck -x "${files[@]}"

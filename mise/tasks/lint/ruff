@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# [MISE] description="Format and lint Python files with ruff (defaults to mise/tasks/)."
+# [MISE] tools={ ruff = "0.15.16" }
+#
+# Day-to-day helper: pass specific files/dirs to check, or run with no args to
+# cover the whole mise/tasks/ tree.
+#
+# [USAGE] arg "[path]" var=#true help="Files or directories to format and lint (default: mise/tasks/)"
+
+set -euo pipefail
+IFS=$'\n\t'
+
+# The variadic positional arg arrives as a shell-escaped, space-separated list;
+# fall back to the task tree when none is given.
+eval "paths=(${usage_path:-mise/tasks/})"
+
+# shellcheck disable=SC2154 # `paths` is populated by the eval above.
+ruff format "${paths[@]}"
+ruff check "${paths[@]}"

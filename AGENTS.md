@@ -40,6 +40,8 @@ mise run github:release --dry-run
 # Lint / smoke
 mise run lint:shellcheck
 mise run lint:ruff
+mise run lint:yaml <file>...
+mise run lint:json <file>...
 mise run smoke:dev
 ```
 

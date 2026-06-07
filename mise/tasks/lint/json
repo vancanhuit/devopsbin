@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# [MISE] description="Lint JSON files with jq (dev convenience; not run in CI)."
+# [MISE] tools={ "aqua:jqlang/jq" = "1.8.1" }
+#
+# Day-to-day helper to sanity-check JSON before committing. `jq empty` parses
+# each file and produces no output, so it fails only on invalid JSON.
+#
+# [USAGE] arg "<file>" var=#true help="JSON files to lint"
+
+set -euo pipefail
+IFS=$'\n\t'
+
+# The variadic positional arg arrives as a shell-escaped, space-separated list.
+eval "files=(${usage_file:-})"
+
+ret=0
+# shellcheck disable=SC2154 # `files` is populated by the eval above.
+for f in "${files[@]}"; do
+    jq empty "$f" || ret=1
+done
+
+exit "$ret"
