@@ -133,3 +133,16 @@ run = "docker compose --profile test up -d --wait"
 [tasks."compose:test:down"]
 description = "Stop the Docker Compose services for testing."
 run = "docker compose --profile test down -v"
+
+[tasks."docker:hadolint"]
+description = "Run hadolint on the Dockerfile."
+tools = { hadolint = "2.14.0" }
+run = "hadolint Dockerfile"
+
+[tasks."docker:prune"]
+description = "Reclaim stale BuildKit cache without hurting cache reuse."
+# Prunes only records unused for 72h from the docker-container builder's
+# internal store; recent --mount=type=cache contents (go mod, bun, go-build)
+# stay warm. The exported local cache in .cache/buildx/ is a separate on-disk
+# directory and is left untouched, so --cache-from still hits next build.
+run = "docker buildx prune --filter 'until=72h' -f"

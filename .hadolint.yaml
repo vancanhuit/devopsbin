@@ -1,0 +1,16 @@
+# hadolint configuration. See https://github.com/hadolint/hadolint#configure
+#
+# Each ignored rule is a deliberate, documented exception — not a blanket
+# silencing of the linter.
+ignored:
+  # DL3008 — "Pin versions in apt-get install".
+  # The apt packages here only exist in the throwaway builder stage and are
+  # never shipped (the runtime is distroless). Pinning Debian package versions
+  # is brittle: exact versions are pulled from repos on every point release, so
+  # a pin breaks the build the moment the mirror moves forward.
+  - DL3008
+  # DL3006 — "Always tag the version of an image explicitly".
+  # The base image is already tagged: gcr.io/distroless/static-debian13 encodes
+  # the Debian release in the tag (`static-debian13`). hadolint does not
+  # recognise distroless' tagging scheme, so this is a false positive.
+  - DL3006

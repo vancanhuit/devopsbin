@@ -22,7 +22,9 @@ mise run api:build
 mise run api:run
 
 # Docker
+mise run docker:hadolint
 mise run docker:build
+mise run docker:prune
 
 # Compose
 mise run compose:dev:up

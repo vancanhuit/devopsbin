@@ -4,3 +4,9 @@ dist/
 web/dist/
 .git
 bin/
+# Local tool/build caches that must never enter the build context. .cache/
+# holds the buildx local cache (hundreds of MB) and would otherwise be shipped
+# into the builder on every build's context-transfer step.
+.cache/
+.ruff_cache/
+__pycache__/
