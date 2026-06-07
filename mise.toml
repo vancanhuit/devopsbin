@@ -133,3 +133,8 @@ run = "docker compose --profile test up -d --wait"
 [tasks."compose:test:down"]
 description = "Stop the Docker Compose services for testing."
 run = "docker compose --profile test down -v"
+
+[tasks."docker:hadolint"]
+description = "Run hadolint on the Dockerfile."
+tools = { hadolint = "2.14.0" }
+run = "hadolint Dockerfile"

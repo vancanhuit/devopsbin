@@ -41,16 +41,27 @@ else
     output="--output=type=oci,dest=dist/devopsbin.oci.tar"
 fi
 
-# Reuses the persisted BuildKit cache shared with the Compose build; requires a
-# docker-container builder (the default on dev hosts and provisioned in CI).
+# Persisted BuildKit layer cache, shared with the Compose build and (in CI)
+# round-tripped through actions/cache. Requires a docker-container builder (the
+# default on dev hosts, provisioned in CI).
+#
+# Cache is written to a fresh directory and atomically swapped in after a
+# successful build (the "move-cache" pattern). Reusing one directory for both
+# cache-from and cache-to lets BuildKit accumulate orphaned blobs from previous
+# build graphs, which is what made .cache/buildx grow without bound and blow the
+# 10 GiB Actions cache quota. mode=max is intentional: the work worth caching
+# lives in the discarded `builder` stage, so mode=min would export almost
+# nothing useful.
+cache_dir=".cache/buildx"
+cache_new=".cache/buildx-new"
 cmd=(
     docker buildx build
     --platform "$platforms"
     --build-arg "VERSION=${VERSION:?}"
     --build-arg "COMMIT=${COMMIT:?}"
     --build-arg "BUILD_TIME=${BUILD_TIME:?}"
-    "--cache-from=type=local,src=.cache/buildx"
-    "--cache-to=type=local,dest=.cache/buildx,mode=max"
+    "--cache-from=type=local,src=$cache_dir"
+    "--cache-to=type=local,dest=$cache_new,mode=max"
     "${tag_args[@]}"
     "$output"
     .
@@ -63,3 +74,11 @@ fi
 
 [ "$output" = "--push" ] || mkdir -p dist
 "${cmd[@]}"
+
+# Swap the freshly written cache in, discarding the previous generation so the
+# directory holds only the current build's reachable records and cannot grow
+# unbounded across builds.
+if [ -d "$cache_new" ]; then
+    rm -rf "$cache_dir"
+    mv "$cache_new" "$cache_dir"
+fi
