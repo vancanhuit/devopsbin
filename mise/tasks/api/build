@@ -5,9 +5,14 @@
 #USAGE flag "-o --output <output>" help="Output binary path" default="bin/devopsbin"
 #USAGE flag "--os <os>" help="Target GOOS (defaults to the host)" default=""
 #USAGE flag "--arch <arch>" help="Target GOARCH (defaults to the host)" default=""
+#USAGE flag "--dry-run" help="Print the expanded go build command without running it"
 
 set -euo pipefail
 IFS=$'\n\t'
+
+# shellcheck source-path=SCRIPTDIR
+# shellcheck source=../../lib/build.sh
+source "${MISE_PROJECT_ROOT:?}/mise/lib/build.sh"
 
 # VERSION, COMMIT and BUILD_TIME come from the global [env] section in mise.toml:
 # git-derived on a host with the repository checked out, or injected as Docker
@@ -24,9 +29,27 @@ GOOS="${usage_os:-$(go env GOOS)}"
 GOARCH="${usage_arch:-$(go env GOARCH)}"
 export GOOS GOARCH CGO_ENABLED=0
 
-go build -ldflags="-s -w -v \
-    -X 'github.com/vancanhuit/devopsbin/internal/cli.version=${VERSION:?}' \
-    -X 'github.com/vancanhuit/devopsbin/internal/cli.commit=${COMMIT:?}' \
-    -X 'github.com/vancanhuit/devopsbin/internal/cli.buildTime=${BUILD_TIME:?}'" \
-    -trimpath \
-    -o "$output" ./cmd/devopsbin
+ldpath="github.com/vancanhuit/devopsbin/internal/cli"
+ldflags="-s -w -v"
+ldflags+=" -X ${ldpath}.version=${VERSION:?}"
+ldflags+=" -X ${ldpath}.commit=${COMMIT:?}"
+ldflags+=" -X ${ldpath}.buildTime=${BUILD_TIME:?}"
+
+cmd=(
+    go build
+    "-ldflags=$ldflags"
+    -trimpath
+    -o "$output"
+    ./cmd/devopsbin
+)
+
+if [ "${usage_dry_run:-false}" = "true" ]; then
+    # Show the exported cross-compile environment as leading VAR=value words so
+    # the printed command is runnable as-is, then the build invocation itself.
+    print_cmd \
+        "GOOS=$GOOS" "GOARCH=$GOARCH" "CGO_ENABLED=$CGO_ENABLED" \
+        "${cmd[@]}"
+    exit 0
+fi
+
+"${cmd[@]}"

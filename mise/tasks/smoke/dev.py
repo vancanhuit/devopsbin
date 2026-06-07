@@ -1,18 +1,23 @@
 #!/usr/bin/env python3
+# [MISE] description="Smoke test the Compose dev profile (build, up, probe endpoints, down)."
+# [MISE] depends=["compose:dev:up"]
+# [MISE] depends_post=["compose:dev:down"]
+# [MISE] tools={python="3.14.5"}
 """Smoke test for the Compose `dev` profile.
 
 Waits for the API to become healthy, then asserts the health, version, and SPA
 endpoints behave as expected. The stack lifecycle (build, up, down) is owned by
-the `smoke:dev` mise task, so this script only probes a running stack.
+this task's `depends`/`depends_post`, so the checks below only probe a running
+stack.
 
 Uses only the Python standard library so it runs anywhere Python 3 is available.
 
 Examples:
     # Probe the default stack
-    scripts/smoke_dev.py
+    mise run smoke:dev
 
     # Point at a non-default host/port
-    scripts/smoke_dev.py --base-url http://127.0.0.1:8080
+    mise run smoke:dev -- --base-url http://127.0.0.1:8080
 """
 
 from __future__ import annotations

@@ -117,14 +117,14 @@ run = "docker compose --profile dev down -v"
 [tasks."ruff:dev"]
 description = "Run ruff linter on the codebase."
 tools = { ruff = "0.15.16" }
-run = "ruff format scripts/ && ruff check scripts/"
+run = "ruff format mise/tasks/ && ruff check mise/tasks/"
 
-[tasks."smoke:dev"]
-description = "Smoke test the Compose dev profile (build, up, probe endpoints, down)."
-depends = ["compose:dev:up"]
-depends_post = ["compose:dev:down"]
-tools = { python = "3.14.5" }
-run = "scripts/smoke_dev.py"
+[tasks."shellcheck:dev"]
+description = "Run shellcheck on the bash file tasks and shared libs."
+tools = { shellcheck = "0.11.0" }
+# File tasks have no extension, so enumerate them by their bash shebang and add
+# the sourced *.sh libs. -x lets shellcheck follow the `source` directives.
+run = "shellcheck -x mise/lib/*.sh $(grep -rlE '^#!.*bash' mise/tasks)"
 
 [tasks."compose:test:up"]
 description = "Start the Docker Compose services for testing."
