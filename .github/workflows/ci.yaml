@@ -77,6 +77,21 @@ jobs:
             ${{ runner.os }}-gobuild-${{ hashFiles('go.sum') }}-
             ${{ runner.os }}-gobuild-
 
+      # golangci-lint keeps its own analysis cache (separate from the Go build
+      # cache) under ~/.cache/golangci-lint. Persisting it lets repeat lint runs
+      # reuse prior analysis instead of recomputing from scratch. Keyed on the
+      # linter version (pinned in mise.toml), its config and go.sum since any of
+      # those changes the analysis; the per-commit suffix lets each run save a
+      # fresh snapshot and restore-keys fall back to the most recent one.
+      - name: Cache golangci-lint
+        uses: actions/cache@v5.0.5
+        with:
+          path: ~/.cache/golangci-lint
+          key: ${{ runner.os }}-golangci-${{ hashFiles('mise.toml', '.golangci.yml', 'go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-golangci-${{ hashFiles('mise.toml', '.golangci.yml', 'go.sum') }}-
+            ${{ runner.os }}-golangci-
+
       - name: Cache bun packages
         uses: actions/cache@v5.0.5
         with:
