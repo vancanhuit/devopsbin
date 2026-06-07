@@ -155,16 +155,15 @@ jobs:
           ./bin/devopsbin --version
 
       # Resolves the build version for the artifact names (the on-disk binary
-      # name stays stable; upload-artifact compresses the contents).
+      # name stays stable; upload-artifact compresses the contents). Runs on
+      # both PRs and pushes to main so each produces downloadable binaries.
       - name: Resolve build version
-        if: github.event_name == 'pull_request'
         id: meta
         run: echo "version=$(mise env --json | jq -r .VERSION)" >> "$GITHUB_OUTPUT"
 
       # Cross-compile the release binaries for the supported Linux platforms and
       # upload each as its own artifact (named with the platform and version).
       - name: Cross-build release binaries
-        if: github.event_name == 'pull_request'
         run: |
           for platform in linux/amd64 linux/arm64; do
             os="${platform%/*}"
@@ -175,7 +174,6 @@ jobs:
           done
 
       - name: Upload linux/amd64 binary artifact
-        if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v7.0.1
         with:
           name: devopsbin-linux-amd64-${{ steps.meta.outputs.version }}
@@ -183,7 +181,6 @@ jobs:
           if-no-files-found: error
 
       - name: Upload linux/arm64 binary artifact
-        if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v7.0.1
         with:
           name: devopsbin-linux-arm64-${{ steps.meta.outputs.version }}
@@ -235,8 +232,11 @@ jobs:
       - name: Lint Dockerfile
         run: mise run docker:hadolint
 
-      # Resolves the build version (and image reference) once for the steps
-      # below. VERSION names the uploaded artifact and the pushed image tags.
+      # Resolves the image reference and the build version once for the steps
+      # below. VERSION names the OCI artifact on PRs and the pushed image tag on
+      # main; on an untagged main commit it resolves to a unique
+      # `<tag>-<N>-g<sha>-dev` string, so it never collides with the semver tag
+      # or `latest` that the release workflow publishes.
       - name: Resolve build metadata
         id: meta
         run: |
@@ -259,7 +259,11 @@ jobs:
           path: dist/devopsbin.oci.tar
           if-no-files-found: error
 
-      # Pushes to main: authenticate to GHCR and push :latest and :<version>.
+      # Pushes to main: authenticate to GHCR and push the image tagged with the
+      # rolling :edge tag (always the latest main build) plus the resolved
+      # VERSION for traceability. On an untagged commit VERSION carries the
+      # `-<N>-g<sha>-dev` suffix, so main pushes never overwrite the semver tag
+      # or `latest` owned by the tag-triggered release workflow.
       - name: Log in to GHCR
         if: github.event_name == 'push'
         uses: docker/login-action@v4.2.0
@@ -273,5 +277,5 @@ jobs:
         run: |
           mise run docker:build --push \
             --image "${{ steps.meta.outputs.image }}" \
-            --tag "${{ steps.meta.outputs.version }}" \
-            --tag latest
+            --tag edge \
+            --tag "${{ steps.meta.outputs.version }}"
