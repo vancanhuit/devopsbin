@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# [MISE] description="Build the multi-platform container image with buildx (OCI export or registry push)."
+#
+# By default the image is exported as an OCI archive to dist/ (PR validation,
+# no registry needed). Pass --push to build and push the manifest to a registry
+# (main/push). Designed to run identically locally and in CI.
+#
+# [USAGE] flag "--push" help="Push the manifest to the registry instead of exporting an OCI archive"
+# [USAGE] flag "--platforms <platforms>" help="Comma-separated target platforms" default="linux/amd64,linux/arm64"
+# [USAGE] flag "--image <image>" help="Image reference without tag" default="devopsbin"
+# [USAGE] flag "--tag <tag>" help="Image tag (repeatable to push several tags at once)" var=#true default="latest"
+# [USAGE] flag "--dry-run" help="Print the expanded buildx command without running it"
+
+set -euo pipefail
+IFS=$'\n\t'
+
+# shellcheck source-path=SCRIPTDIR
+# shellcheck source=../../lib/build.sh
+source "${MISE_PROJECT_ROOT:?}/mise/lib/build.sh"
+
+# VERSION, COMMIT and BUILD_TIME come from the global [env] section in mise.toml
+# and are forwarded to the image build as build args.
+platforms="${usage_platforms:?}"
+image="${usage_image:?}"
+
+# --tag is variadic: usage_tag holds a shell-escaped, space-separated list.
+# Expand it into repeated `--tag image:tag` arguments for buildx.
+eval "tags=(${usage_tag:-latest})"
+tag_args=()
+# shellcheck disable=SC2154 # `tags` is populated by the eval above.
+for t in "${tags[@]}"; do
+    tag_args+=(--tag "$image:$t")
+done
+
+# A multi-platform build cannot load into the local docker image store, so the
+# two modes are push (publish the manifest) or OCI archive export (validate the
+# build without a registry, e.g. on pull requests).
+if [ "${usage_push:-false}" = "true" ]; then
+    output="--push"
+else
+    output="--output=type=oci,dest=dist/devopsbin.oci.tar"
+fi
+
+# Reuses the persisted BuildKit cache shared with the Compose build; requires a
+# docker-container builder (the default on dev hosts and provisioned in CI).
+cmd=(
+    docker buildx build
+    --platform "$platforms"
+    --build-arg "VERSION=${VERSION:?}"
+    --build-arg "COMMIT=${COMMIT:?}"
+    --build-arg "BUILD_TIME=${BUILD_TIME:?}"
+    "--cache-from=type=local,src=.cache/buildx"
+    "--cache-to=type=local,dest=.cache/buildx,mode=max"
+    "${tag_args[@]}"
+    "$output"
+    .
+)
+
+if [ "${usage_dry_run:-false}" = "true" ]; then
+    print_cmd "${cmd[@]}"
+    exit 0
+fi
+
+[ "$output" = "--push" ] || mkdir -p dist
+"${cmd[@]}"

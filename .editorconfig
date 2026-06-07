@@ -1,0 +1,16 @@
+root = true
+
+[*]
+indent_style = space
+charset = utf-8
+indent_size = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.go]
+indent_style = tab
+indent_size = 4
+
+[*.{yml,yaml,json,js,ts,svelte,html,css}]
+indent_style = space
+indent_size = 2

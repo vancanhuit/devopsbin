@@ -1,21 +1,55 @@
 #!/usr/bin/env bash
-#MISE description="Build the API server with embedded version information."
-#MISE depends=["web:build"]
-
+# [MISE] description="Build the API server with embedded version information."
+# [MISE] depends=["web:build"]
+#
+# [USAGE] flag "-o --output <output>" help="Output binary path" default="bin/devopsbin"
+# [USAGE] flag "--os <os>" help="Target GOOS (defaults to the host)" default=""
+# [USAGE] flag "--arch <arch>" help="Target GOARCH (defaults to the host)" default=""
+# [USAGE] flag "--dry-run" help="Print the expanded go build command without running it"
 
 set -euo pipefail
 IFS=$'\n\t'
 
-# Prefer values injected via the environment (e.g. Docker build args) and fall
-# back to git when building on a host with the repository checked out. Inside
-# the image .git is not copied, so the env values are the source of truth.
-BUILD_TIME="${BUILD_TIME:-$(date -u +"%Y-%m-%dT%H:%M:%SZ")}"
-VERSION="${VERSION:-$(git describe --tags --always --abbrev=0 --dirty=-dev 2>/dev/null || echo "unknown")}"
-COMMIT="${COMMIT:-$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")}"
+# shellcheck source-path=SCRIPTDIR
+# shellcheck source=../../lib/build.sh
+source "${MISE_PROJECT_ROOT:?}/mise/lib/build.sh"
 
-go build -ldflags="-s -w -v \
-    -X 'github.com/vancanhuit/devopsbin/internal/cli.version=${VERSION}' \
-    -X 'github.com/vancanhuit/devopsbin/internal/cli.commit=${COMMIT}' \
-    -X 'github.com/vancanhuit/devopsbin/internal/cli.buildTime=${BUILD_TIME}'" \
-    -trimpath \
-    -o bin/devopsbin ./cmd/devopsbin
+# VERSION, COMMIT and BUILD_TIME come from the global [env] section in mise.toml:
+# git-derived on a host with the repository checked out, or injected as Docker
+# build args inside the image (where .git is not available).
+#
+# The output path is configurable and defaults to the stable, convenient
+# bin/devopsbin; callers can override it with --output when needed.
+output="${usage_output:?}"
+
+# --os/--arch enable cross-compilation. They default to the host's values so
+# local builds work without any flags, while CI can target other platforms.
+# CGO is disabled so the resulting binary is statically linked and portable.
+GOOS="${usage_os:-$(go env GOOS)}"
+GOARCH="${usage_arch:-$(go env GOARCH)}"
+export GOOS GOARCH CGO_ENABLED=0
+
+ldpath="github.com/vancanhuit/devopsbin/internal/cli"
+ldflags="-s -w -v"
+ldflags+=" -X ${ldpath}.version=${VERSION:?}"
+ldflags+=" -X ${ldpath}.commit=${COMMIT:?}"
+ldflags+=" -X ${ldpath}.buildTime=${BUILD_TIME:?}"
+
+cmd=(
+    go build
+    "-ldflags=$ldflags"
+    -trimpath
+    -o "$output"
+    ./cmd/devopsbin
+)
+
+if [ "${usage_dry_run:-false}" = "true" ]; then
+    # Show the exported cross-compile environment as leading VAR=value words so
+    # the printed command is runnable as-is, then the build invocation itself.
+    print_cmd \
+        "GOOS=$GOOS" "GOARCH=$GOARCH" "CGO_ENABLED=$CGO_ENABLED" \
+        "${cmd[@]}"
+    exit 0
+fi
+
+"${cmd[@]}"
