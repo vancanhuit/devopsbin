@@ -81,6 +81,28 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     mise run app:build
 
 FROM gcr.io/distroless/static-debian13 AS runtime
+
+# ARGs are stage-scoped, so re-declare the build metadata here to feed the OCI
+# image labels below. The dynamic values come from compose.yaml build.args /
+# the docker:build task; the rest are static project metadata.
+ARG VERSION=unknown
+ARG COMMIT=unknown
+ARG BUILD_TIME=unknown
+
+# Standard OCI image annotations (org.opencontainers.image.*) so registries and
+# tooling can show provenance, link back to the source and surface versioning.
+LABEL org.opencontainers.image.title="devopsbin" \
+    org.opencontainers.image.description="DevOpsBin — a starter/template service." \
+    org.opencontainers.image.source="https://github.com/vancanhuit/devopsbin" \
+    org.opencontainers.image.url="https://github.com/vancanhuit/devopsbin" \
+    org.opencontainers.image.documentation="https://github.com/vancanhuit/devopsbin#readme" \
+    org.opencontainers.image.vendor="vancanhuit" \
+    org.opencontainers.image.licenses="MIT" \
+    org.opencontainers.image.base.name="gcr.io/distroless/static-debian13" \
+    org.opencontainers.image.version="${VERSION}" \
+    org.opencontainers.image.revision="${COMMIT}" \
+    org.opencontainers.image.created="${BUILD_TIME}"
+
 COPY --from=builder /app/bin/devopsbin /devopsbin
 
 # distroless ships no shell or curl/wget, so probe via the binary's own

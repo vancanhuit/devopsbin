@@ -247,11 +247,17 @@ jobs:
           echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
           echo "version=$(mise env --json | jq -r .VERSION)" >> "$GITHUB_OUTPUT"
 
-      # Pull requests: build the multi-platform image and export an OCI archive
-      # without contacting a registry.
+      # Pull requests: build the multi-platform image with the same SBOM and
+      # provenance attestations as a release and export it as an OCI archive
+      # without contacting a registry. There is no pushed digest to sign and
+      # publish, so the metadata file is archived for inspection instead.
       - name: Build OCI image
         if: github.event_name == 'pull_request'
-        run: mise run docker:build
+        run: |
+          mise run docker:build \
+            --sbom \
+            --provenance \
+            --metadata-file dist/metadata.json
 
       - name: Upload OCI image artifact
         if: github.event_name == 'pull_request'
@@ -261,6 +267,14 @@ jobs:
           # contents), so the on-disk filename stays stable.
           name: devopsbin-oci-${{ steps.meta.outputs.version }}
           path: dist/devopsbin.oci.tar
+          if-no-files-found: error
+
+      - name: Upload OCI build metadata artifact
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: devopsbin-oci-metadata-${{ steps.meta.outputs.version }}
+          path: dist/metadata.json
           if-no-files-found: error
 
       # Pushes to main: authenticate to GHCR and push the image tagged with the
