@@ -117,5 +117,93 @@ jobs:
           mise run api:build
           ./bin/devopsbin --version
 
+      # Resolves the build version for the artifact name (the on-disk binary
+      # name stays stable; upload-artifact compresses the contents).
+      - name: Resolve build version
+        if: github.event_name == 'pull_request'
+        id: meta
+        run: echo "version=$(mise env --json | jq -r .VERSION)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload binary artifact
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: devopsbin-${{ steps.meta.outputs.version }}
+          path: bin/devopsbin
+          if-no-files-found: error
+
       - name: Smoke test the Compose dev profile
         run: mise run smoke:dev
+
+  # Builds the multi-platform container image. On pull requests it exports an
+  # OCI archive (validation, no registry); on pushes to main it pushes the
+  # manifest to GHCR. Runs only after the checks above pass.
+  docker:
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v6.0.3
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: jdx/mise-action@v4.1.0
+        with:
+          install: true
+          cache: true
+
+      # Provides a docker-container builder so docker:build can export/import
+      # the type=local BuildKit cache (the default docker driver cannot).
+      - uses: docker/setup-buildx-action@v4.1.0
+
+      # Shares the persisted BuildKit layer cache with the check job's build.
+      - name: Cache Docker buildx layers
+        uses: actions/cache@v5.0.5
+        with:
+          path: .cache/buildx
+          key: ${{ runner.os }}-buildx-${{ hashFiles('Dockerfile', 'go.sum', '**/bun.lock', 'mise.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
+
+      # Resolves the build version (and image reference) once for the steps
+      # below. VERSION names the uploaded artifact and the pushed image tags.
+      - name: Resolve build metadata
+        id: meta
+        run: |
+          echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+          echo "version=$(mise env --json | jq -r .VERSION)" >> "$GITHUB_OUTPUT"
+
+      # Pull requests: build the multi-platform image and export an OCI archive
+      # without contacting a registry.
+      - name: Build OCI image
+        if: github.event_name == 'pull_request'
+        run: mise run docker:build
+
+      - name: Upload OCI image artifact
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          # VERSION lives in the artifact name (upload-artifact compresses the
+          # contents), so the on-disk filename stays stable.
+          name: devopsbin-oci-${{ steps.meta.outputs.version }}
+          path: dist/devopsbin.oci.tar
+          if-no-files-found: error
+
+      # Pushes to main: authenticate to GHCR and push :latest and :<version>.
+      - name: Log in to GHCR
+        if: github.event_name == 'push'
+        uses: docker/login-action@v4.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        if: github.event_name == 'push'
+        run: |
+          mise run docker:build --push \
+            --image "${{ steps.meta.outputs.image }}" \
+            --tag "${{ steps.meta.outputs.version }}" \
+            --tag latest

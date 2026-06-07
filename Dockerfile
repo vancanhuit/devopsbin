@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM debian:13-slim AS builder
+FROM --platform=${BUILDPLATFORM} debian:13-slim AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update  \
@@ -56,7 +56,11 @@ ENV VERSION=${VERSION} \
     COMMIT=${COMMIT} \
     BUILD_TIME=${BUILD_TIME}
 
+ARG TARGETOS
+ARG TARGETARCH
 ENV CGO_ENABLED=0
+ENV GOOS=${TARGETOS}
+ENV GOARCH=${TARGETARCH}
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     mise run api:build

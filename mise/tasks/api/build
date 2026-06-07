@@ -1,21 +1,23 @@
 #!/usr/bin/env bash
 #MISE description="Build the API server with embedded version information."
 #MISE depends=["web:build"]
-
+#
+#USAGE flag "-o --output <output>" help="Output binary path" default="bin/devopsbin"
 
 set -euo pipefail
 IFS=$'\n\t'
 
-# Prefer values injected via the environment (e.g. Docker build args) and fall
-# back to git when building on a host with the repository checked out. Inside
-# the image .git is not copied, so the env values are the source of truth.
-BUILD_TIME="${BUILD_TIME:-$(date -u +"%Y-%m-%dT%H:%M:%SZ")}"
-VERSION="${VERSION:-$(git describe --tags --always --abbrev=0 --dirty=-dev 2>/dev/null || echo "unknown")}"
-COMMIT="${COMMIT:-$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")}"
+# VERSION, COMMIT and BUILD_TIME come from the global [env] section in mise.toml:
+# git-derived on a host with the repository checked out, or injected as Docker
+# build args inside the image (where .git is not available).
+#
+# The output path is configurable and defaults to the stable, convenient
+# bin/devopsbin; callers can override it with --output when needed.
+output="${usage_output:?}"
 
 go build -ldflags="-s -w -v \
-    -X 'github.com/vancanhuit/devopsbin/internal/cli.version=${VERSION}' \
-    -X 'github.com/vancanhuit/devopsbin/internal/cli.commit=${COMMIT}' \
-    -X 'github.com/vancanhuit/devopsbin/internal/cli.buildTime=${BUILD_TIME}'" \
+    -X 'github.com/vancanhuit/devopsbin/internal/cli.version=${VERSION:?}' \
+    -X 'github.com/vancanhuit/devopsbin/internal/cli.commit=${COMMIT:?}' \
+    -X 'github.com/vancanhuit/devopsbin/internal/cli.buildTime=${BUILD_TIME:?}'" \
     -trimpath \
-    -o bin/devopsbin ./cmd/devopsbin
+    -o "$output" ./cmd/devopsbin
