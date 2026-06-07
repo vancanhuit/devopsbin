@@ -114,18 +114,6 @@ run = "docker compose --profile dev up -d --wait --build"
 description = "Stop the dev-profile Docker Compose services."
 run = "docker compose --profile dev down -v"
 
-[tasks."lint:ruff"]
-description = "Run ruff linter on the codebase."
-tools = { ruff = "0.15.16" }
-run = "ruff format mise/tasks/ && ruff check mise/tasks/"
-
-[tasks."lint:shellcheck"]
-description = "Run shellcheck on the bash file tasks and shared libs."
-tools = { shellcheck = "0.11.0" }
-# File tasks have no extension, so enumerate them by their bash shebang and add
-# the sourced *.sh libs. -x lets shellcheck follow the `source` directives.
-run = "shellcheck -x mise/lib/*.sh $(grep -rlE '^#!.*bash' mise/tasks)"
-
 [tasks."compose:test:up"]
 description = "Start the Docker Compose services for testing."
 run = "docker compose --profile test up -d --wait"

@@ -1,0 +1,18 @@
+# yamllint config for the lint:yaml-json dev task. yamllint auto-discovers this
+# file from the project root. Warnings do not fail the task (only errors do),
+# so noisy-but-harmless style rules are kept at warning level.
+extends: default
+
+rules:
+  # A leading "---" is optional for these config/spec files.
+  document-start: disable
+  # Keep long lines readable but non-fatal (URLs, descriptions, etc.).
+  line-length:
+    max: 120
+    level: warning
+  # GitHub Actions workflow keys like `on:` are intentional, not booleans.
+  truthy:
+    check-keys: false
+  # Comment formatting is style, not correctness.
+  comments:
+    min-spaces-from-content: 1

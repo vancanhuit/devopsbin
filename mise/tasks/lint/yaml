@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# [MISE] description="Lint YAML files with yamllint (dev convenience; not run in CI)."
+# [MISE] tools={ yamllint = "1.38.0" }
+#
+# Day-to-day helper to sanity-check YAML before committing. yamllint reads the
+# project .yamllint.yaml config (warnings don't fail the task, only errors do).
+#
+# [USAGE] arg "<file>" var=#true help="YAML files to lint"
+
+set -euo pipefail
+IFS=$'\n\t'
+
+# The variadic positional arg arrives as a shell-escaped, space-separated list.
+eval "files=(${usage_file:-})"
+
+# shellcheck disable=SC2154 # `files` is populated by the eval above.
+yamllint -- "${files[@]}"
