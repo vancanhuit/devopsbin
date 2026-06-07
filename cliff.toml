@@ -1,0 +1,85 @@
+# git-cliff configuration -- https://git-cliff.org/docs/configuration
+#
+# Renders the release-body markdown for the (PREVIOUS_TAG, THIS_TAG] range.
+# The github:release task feeds the output to `gh release create --notes-file`,
+# so the template must NOT include a top-level version header (the GitHub
+# Releases page already shows the tag name); only group sections, bullet lists
+# and a compare-link footer.
+#
+# Style notes:
+# - Emoji group headings so the Releases UI is scannable at a glance.
+# - Breaking changes are lifted into a dedicated section at the top AND kept in
+#   their normal type group with a **BREAKING:** prefix, so a reader scanning
+#   Features cannot miss a behavioural break.
+# - Commit subjects render as-is (GitHub's squash-merge keeps the `(#NN)`
+#   suffix that GitHub markdown auto-links).
+
+[changelog]
+header = ""
+trim = true
+
+body = """
+{%- macro commit_line(commit) -%}
+- {% if commit.breaking %}**BREAKING:** {% endif %}\
+{%- if commit.scope %}**{{ commit.scope }}**: {% endif -%}\
+{{ commit.message | split(pat="\n") | first | trim }}
+{%- endmacro -%}
+{%- set breaking = commits | filter(attribute="breaking", value=true) -%}
+{%- if breaking | length > 0 %}
+### ⚠ Breaking Changes
+
+{% for commit in breaking -%}
+{{ self::commit_line(commit=commit) }}
+{% endfor %}
+{%- endif -%}
+{%- for group, group_commits in commits | filter(attribute="group") | group_by(attribute="group") %}
+### {{ group | striptags | trim | upper_first }}
+
+{% for commit in group_commits -%}
+{{ self::commit_line(commit=commit) }}
+{% endfor %}
+{%- endfor -%}
+{%- if previous and previous.version %}
+
+**Full Changelog**: https://github.com/vancanhuit/devopsbin/compare/{{ previous.version }}...{{ version }}
+{% endif -%}
+"""
+
+[git]
+# Parse Conventional Commits (feat / fix / etc.) and bucket by type.
+conventional_commits = true
+# Drop commits that do not match `commit_parsers` (merge commits, empty
+# reverts, ...) so the changelog stays focused on real changes.
+filter_unconventional = true
+filter_commits = true
+split_commits = false
+# `feat!:` / `BREAKING CHANGE:` footers must propagate breaking=true even when
+# the type itself is set to skip.
+protect_breaking_commits = true
+# Oldest-first within a group, matching a `git log --reverse` reading order.
+sort_commits = "oldest"
+topo_order = true
+
+# The `<!-- N -->` prefix forces a stable group sort order while being stripped
+# from the rendered heading via `striptags` in the body template.
+commit_parsers = [
+  { message = "^feat", group = "<!-- 0 -->🚀 Features" },
+  { message = "^fix", group = "<!-- 1 -->🐛 Bug Fixes" },
+  { message = "^perf", group = "<!-- 2 -->⚡ Performance" },
+  { message = "^refactor", group = "<!-- 3 -->♻️ Refactors" },
+  { message = "^revert", group = "<!-- 4 -->⏪ Reverts" },
+  { message = "^docs", group = "<!-- 5 -->📚 Documentation" },
+  { message = "^test", group = "<!-- 6 -->🧪 Tests" },
+  { message = "^build", group = "<!-- 7 -->🏗️ Build" },
+  { message = "^ci", group = "<!-- 7 -->🏗️ Build" },
+  # Surface dependency bumps as their own section rather than lumping them in
+  # with hand-authored build changes.
+  { message = "^chore\\(deps", group = "<!-- 8 -->📦 Dependencies" },
+  { message = "^chore", group = "<!-- 9 -->🔧 Chores" },
+  { message = "^style", skip = true },
+]
+
+[bump]
+# A `-suffix` tag (e.g. v0.0.0-rc1) is a pre-release; never auto-bump past it.
+features_always_bump_minor = true
+breaking_always_bump_major = true
