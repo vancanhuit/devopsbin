@@ -1,0 +1,103 @@
+# Dependabot configuration -- weekly bumps for every ecosystem we ship.
+# Docs: https://docs.github.com/en/code-security/dependabot/working-with-dependabot/dependabot-options-reference
+#
+# Conventions:
+#   - Weekly schedule on Monday so updates batch into one review window.
+#   - `chore(deps)` / `chore(deps-dev)` commit prefixes match our
+#     conventional-commits config (commitlint.config.mjs) and the
+#     chore(deps) -> 📦 Dependencies group in cliff.toml.
+#   - Minor + patch updates are grouped per-ecosystem so a typical week
+#     produces one PR per group instead of N PRs. Major-version bumps
+#     stay separate so they get individual review attention.
+#   - `cooldown.default-days: 1` delays opening PRs for newly-published
+#     versions across all ecosystems. This is a supply-chain hygiene
+#     measure -- packages younger than a day have not been observed by
+#     downstream consumers long enough to surface obvious malware /
+#     install-time exploits.
+
+version: 2
+
+updates:
+  # Go modules (go.mod at the repo root).
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 1
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      gomod-minor-and-patch:
+        update-types: [minor, patch]
+
+  # GitHub Actions referenced from .github/workflows/*.yaml (e.g. the
+  # docker/* and actions/* pinned versions).
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 1
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      actions-minor-and-patch:
+        update-types: [minor, patch]
+
+  # Root bun tooling: husky + commitlint.
+  - package-ecosystem: bun
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 1
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      bun-root-minor-and-patch:
+        update-types: [minor, patch]
+
+  # Vite + Svelte + Tailwind SPA toolchain that produces the embedded
+  # web assets (web/dist/).
+  - package-ecosystem: bun
+    directory: /web
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 1
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      bun-web-minor-and-patch:
+        update-types: [minor, patch]
+
+  # Base images referenced by FROM ... in Dockerfile (debian, distroless).
+  # Major bumps come as individual PRs so we can validate them against
+  # the test suite.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 1
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      docker-minor-and-patch:
+        update-types: [minor, patch]
