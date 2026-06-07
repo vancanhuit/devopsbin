@@ -199,6 +199,10 @@ jobs:
     permissions:
       contents: read
       packages: write
+      # Mint a short-lived OIDC token and write the provenance attestation to
+      # the GitHub attestations store for the image pushed on main.
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v6.0.3
         with:
@@ -273,9 +277,25 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push image
+        id: build
         if: github.event_name == 'push'
         run: |
           mise run docker:build --push \
             --image "${{ steps.meta.outputs.image }}" \
             --tag edge \
-            --tag "${{ steps.meta.outputs.version }}"
+            --tag "${{ steps.meta.outputs.version }}" \
+            --sbom \
+            --provenance \
+            --metadata-file dist/metadata.json
+          echo "digest=$(jq -r '.["containerimage.digest"]' dist/metadata.json)" >> "$GITHUB_OUTPUT"
+
+      # Sign a build-provenance attestation for the exact image digest just
+      # pushed and publish it to the registry so consumers can verify the image
+      # was built by this workflow (gh attestation verify / cosign).
+      - name: Attest image provenance
+        if: github.event_name == 'push'
+        uses: actions/attest-build-provenance@v4.1.0
+        with:
+          subject-name: ${{ steps.meta.outputs.image }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true

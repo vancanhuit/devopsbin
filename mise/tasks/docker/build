@@ -9,6 +9,9 @@
 # [USAGE] flag "--platforms <platforms>" help="Comma-separated target platforms" default="linux/amd64,linux/arm64"
 # [USAGE] flag "--image <image>" help="Image reference without tag" default="devopsbin"
 # [USAGE] flag "--tag <tag>" help="Image tag (repeatable to push several tags at once)" var=#true default="latest"
+# [USAGE] flag "--sbom" help="Attach an SPDX SBOM attestation to the image manifest"
+# [USAGE] flag "--provenance" help="Attach a max-mode SLSA provenance attestation to the image manifest"
+# [USAGE] flag "--metadata-file <file>" help="Write build result metadata (incl. the image digest) as JSON to this path" default=""
 # [USAGE] flag "--dry-run" help="Print the expanded buildx command without running it"
 
 set -euo pipefail
@@ -41,6 +44,23 @@ else
     output="--output=type=oci,dest=dist/devopsbin.oci.tar"
 fi
 
+# Opt-in supply-chain attestations attached to the image manifest as in-toto
+# statements (stored alongside the manifests in the image index):
+#   --sbom        embeds an SPDX SBOM per platform describing the image
+#                 contents (BuildKit --sbom=true).
+#   --provenance  embeds a max-mode SLSA provenance attestation recording how
+#                 the image was built (BuildKit --provenance=mode=max).
+# They are opt-in so local quick builds stay fast; CI enables them on the
+# images it publishes.
+attest_args=()
+[ "${usage_sbom:-false}" = "true" ] && attest_args+=(--sbom=true)
+[ "${usage_provenance:-false}" = "true" ] && attest_args+=(--provenance=mode=max)
+
+# --metadata-file writes the build result (including containerimage.digest) as
+# JSON so CI can attest the exact digest it just pushed.
+metadata_args=()
+[ -n "${usage_metadata_file:-}" ] && metadata_args+=(--metadata-file "$usage_metadata_file")
+
 # Persisted BuildKit layer cache, shared with the Compose build and (in CI)
 # round-tripped through actions/cache. Requires a docker-container builder (the
 # default on dev hosts, provisioned in CI).
@@ -72,6 +92,8 @@ cmd=(
     --build-arg "BUILD_TIME=${BUILD_TIME:?}"
     "--cache-from=type=local,src=$cache_dir"
     "--cache-to=type=local,dest=$cache_new,mode=max"
+    "${attest_args[@]}"
+    "${metadata_args[@]}"
     "${tag_args[@]}"
     "$output"
     .
