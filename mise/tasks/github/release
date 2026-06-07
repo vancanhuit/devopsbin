@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+# [MISE] description="Generate a changelog with git-cliff and publish a GitHub release with build assets."
+# [MISE] tools={"git-cliff"="2.13.1", gh="2.93.0"}
+#
+# Designed to run identically locally (with --dry-run) and in CI, where it is
+# triggered by a semver tag push (v0.0.0 or a pre-release like v0.0.0-rc1).
+#
+# It resolves the release tag, renders release notes for the
+# (previous_tag, tag] range with git-cliff (see cliff.toml), cross-compiles the
+# release binaries, and creates the GitHub release with the archives attached.
+#
+# Release kind is derived from the tag and flags:
+#   - official  : a plain semver tag (v0.0.0)        -> marked as --latest
+#   - pre-release: a tag with a `-suffix` (v0.0.0-rc1) -> marked --prerelease
+#   - draft     : --draft                            -> unpublished draft
+#
+# --dry-run renders and prints the notes and the gh command without building
+# assets or contacting GitHub, so it is safe to run locally without a token.
+#
+# [USAGE] flag "--tag <tag>" help="Release tag (defaults to GITHUB_REF_NAME or the exact tag at HEAD)" default=""
+# [USAGE] flag "--draft" help="Create the release as an unpublished draft"
+# [USAGE] flag "--dry-run" help="Print the release notes and gh command without creating the release"
+
+set -euo pipefail
+IFS=$'\n\t'
+
+# shellcheck source-path=SCRIPTDIR
+# shellcheck source=../../lib/build.sh
+source "${MISE_PROJECT_ROOT:?}/mise/lib/build.sh"
+
+# Resolve the tag: explicit flag, then the CI ref name, then the exact tag at
+# HEAD (so a local `git tag v0.1.0 && mise run github:release` just works).
+tag="${usage_tag:-${GITHUB_REF_NAME:-}}"
+if [ -z "$tag" ]; then
+    tag="$(git describe --tags --exact-match 2>/dev/null || true)"
+fi
+[ -n "$tag" ] || {
+    echo "error: no release tag (pass --tag or push/checkout a tag)" >&2
+    exit 1
+}
+
+# Enforce the semantic tag shape: v MAJOR.MINOR.PATCH with an optional
+# pre-release suffix (e.g. v0.0.0 or v0.0.0-rc1).
+if ! [[ $tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+    echo "error: tag '$tag' is not a valid release tag (expected vMAJOR.MINOR.PATCH[-suffix])" >&2
+    exit 1
+fi
+
+# A pre-release tag carries a `-suffix`; an official release does not.
+case $tag in
+    *-*) prerelease="true" ;;
+    *) prerelease="false" ;;
+esac
+draft="${usage_draft:-false}"
+dry_run="${usage_dry_run:-false}"
+
+repo="${GITHUB_REPOSITORY:-vancanhuit/devopsbin}"
+dist="dist/release"
+changelog="$dist/CHANGELOG.md"
+platforms=(linux/amd64 linux/arm64)
+
+# Asset paths are fixed up front so the dry-run preview shows exactly what a
+# real run would attach: each archive, its own .sha256 file, and the aggregate
+# SHA256SUMS.
+assets=()
+for platform in "${platforms[@]}"; do
+    os="${platform%/*}"
+    arch="${platform#*/}"
+    assets+=("$dist/devopsbin_${tag}_${os}_${arch}.tar.gz")
+    assets+=("$dist/devopsbin_${tag}_${os}_${arch}.tar.gz.sha256")
+done
+assets+=("$dist/SHA256SUMS")
+
+mkdir -p "$dist"
+
+# Resolve the previous tag with git's semver-aware sort (so v0.10.0 > v0.9.0),
+# not git-cliff's lexicographic `--latest`. When the tag already exists, render
+# the (prev, tag] range; when it does not yet exist (local preview), render the
+# unreleased commits as this version instead.
+prev_tag="$(git tag --sort=version:refname | grep -B1 "^${tag}$" | head -1 || true)"
+[ "$prev_tag" = "$tag" ] && prev_tag=""
+
+if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+    if [ -n "$prev_tag" ]; then
+        git-cliff "${prev_tag}..${tag}" --output "$changelog"
+    else
+        git-cliff --output "$changelog"
+    fi
+else
+    prev_tag="$(git tag --sort=version:refname | tail -1 || true)"
+    git-cliff --unreleased --tag "$tag" --output "$changelog"
+fi
+
+# git-cliff resolves the "Full Changelog" footer's previous.version by
+# lexicographic sort, so patch it to the correctly semver-sorted previous tag.
+if [ -n "$prev_tag" ]; then
+    sed -i \
+        "s|^\*\*Full Changelog\*\*:.*|**Full Changelog**: https://github.com/${repo}/compare/${prev_tag}...${tag}|" \
+        "$changelog"
+fi
+
+# Append a ready-to-copy pull command for the image published under this tag so
+# the release page documents how to fetch the matching container.
+{
+    printf '\n### 🐳 Container image\n\n'
+    # shellcheck disable=SC2016 # backticks are literal markdown, not a subshell.
+    printf '```sh\ndocker pull ghcr.io/%s:%s\n```\n' "$repo" "$tag"
+} >>"$changelog"
+
+# Assemble the gh command. --latest is set only for an official, non-draft
+# release so publishing a pre-release or a draft never moves the "Latest"
+# pointer.
+gh_cmd=(
+    gh release create "$tag"
+    --title "$tag"
+    --notes-file "$changelog"
+)
+[ "$prerelease" = "true" ] && gh_cmd+=(--prerelease)
+[ "$draft" = "true" ] && gh_cmd+=(--draft)
+if [ "$prerelease" = "false" ] && [ "$draft" = "false" ]; then
+    gh_cmd+=(--latest)
+fi
+gh_cmd+=("${assets[@]}")
+
+if [ "$dry_run" = "true" ]; then
+    printf '===== release notes (%s) =====\n' "$tag"
+    cat "$changelog"
+    printf '===== gh command =====\n'
+    print_cmd "${gh_cmd[@]}"
+    exit 0
+fi
+
+# Cross-compile and package the release binaries as the assets attached above.
+for platform in "${platforms[@]}"; do
+    os="${platform%/*}"
+    arch="${platform#*/}"
+    stage="$dist/devopsbin_${tag}_${os}_${arch}"
+    archive="$dist/devopsbin_${tag}_${os}_${arch}.tar.gz"
+    mkdir -p "$stage"
+    mise run api:build --os "$os" --arch "$arch" --output "$stage/devopsbin"
+    tar -czf "$archive" -C "$stage" devopsbin
+    rm -rf "$stage"
+    # Per-archive checksum (verify one asset without downloading the rest).
+    (cd "$dist" && sha256sum "$(basename "$archive")" >"$(basename "$archive").sha256")
+done
+# Aggregate checksum file covering every archive.
+(cd "$dist" && sha256sum devopsbin_*.tar.gz >SHA256SUMS)
+
+"${gh_cmd[@]}"

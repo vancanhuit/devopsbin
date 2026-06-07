@@ -1,0 +1,116 @@
+name: DevOpsBin Release
+
+# Triggered by pushing a semantic version tag. Publishes, in order:
+#   1. The multi-platform image to GHCR under :<tag> (e.g. :v1.2.3) and, for an
+#      official release only, :latest.
+#   2. A GitHub Release whose notes are the git-cliff changelog for the
+#      (previous_tag, tag] range, with the cross-compiled binary archives and
+#      their SHA256 checksums attached. A pre-release tag (v1.2.3-rc1) is marked
+#      as a prerelease and never moves :latest or the "Latest release" pointer.
+#
+# The image job runs first; the release job depends on it so a release is never
+# published when the image push silently failed.
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+" # v1.2.3
+      - "v[0-9]+.[0-9]+.[0-9]+-*" # v1.2.3-rc1, v1.2.3-beta.1, ...
+
+permissions:
+  contents: read
+
+# Two runs for the same tag would race on the image push and the release
+# create; different tags are independent.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v6.0.3
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: jdx/mise-action@v4.1.0
+        with:
+          # Pin the mise CLI to match MISE_VERSION in mise.toml and the
+          # Dockerfile so local, CI, and image builds resolve tasks and tools
+          # identically.
+          version: 2026.6.1
+          install: true
+          cache: true
+
+      # Provides a docker-container builder so docker:build can export/import
+      # the type=local BuildKit cache (the default docker driver cannot).
+      - uses: docker/setup-buildx-action@v4.1.0
+
+      # Shares the multi-platform release image's BuildKit layer cache with the
+      # ci.yaml docker job (same key) so release builds reuse main's layers.
+      - name: Cache Docker buildx layers
+        uses: actions/cache@v5.0.5
+        with:
+          path: .cache/buildx
+          key: ${{ runner.os }}-buildx-release-${{ hashFiles('Dockerfile', 'go.sum', '**/bun.lock', 'mise.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-release-
+
+      - name: Lint Dockerfile
+        run: mise run docker:hadolint
+
+      # The image reference is the lowercased repository; VERSION comes from the
+      # git tag (git describe reports it verbatim on a tag push).
+      - name: Resolve build metadata
+        id: meta
+        run: |
+          echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+          echo "version=$(mise env --json | jq -r .VERSION)" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Push :<tag> always; add :latest only for an official release (the tag
+      # has no `-suffix`), so a pre-release never moves the stable pointer.
+      - name: Build and push image
+        run: |
+          tags=(--tag "${{ steps.meta.outputs.version }}")
+          case "${{ github.ref_name }}" in
+            *-*) ;;
+            *) tags+=(--tag latest) ;;
+          esac
+          mise run docker:build --push \
+            --image "${{ steps.meta.outputs.image }}" \
+            "${tags[@]}"
+
+  release:
+    needs: image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6.0.3
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: jdx/mise-action@v4.1.0
+        with:
+          version: 2026.6.1
+          install: true
+          cache: true
+
+      # Cross-compiles the binary archives, renders the git-cliff changelog for
+      # this tag and creates the GitHub Release with the assets attached. The
+      # task reads the tag from GITHUB_REF_NAME and marks the release as a
+      # prerelease automatically for a `-suffix` tag.
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: mise run github:release

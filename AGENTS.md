@@ -32,6 +32,9 @@ mise run compose:dev:down
 mise run compose:test:up
 mise run compose:test:down
 
+# Release
+mise run github:release --dry-run
+
 # Lint / smoke
 mise run shellcheck:dev
 mise run ruff:dev
