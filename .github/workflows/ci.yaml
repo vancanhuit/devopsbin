@@ -51,15 +51,31 @@ jobs:
 
       # mise-action caches the toolchains themselves; these cache the package
       # and build artifacts so dependency downloads and recompiles are reused.
-      - name: Cache Go modules and build cache
+
+      # Module cache is deterministic by go.sum, so an exact-key match restores
+      # everything and there is nothing new to save.
+      - name: Cache Go modules
         uses: actions/cache@v5.0.5
         with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-          key: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-gomod-${{ hashFiles('go.sum') }}
           restore-keys: |
-            ${{ runner.os }}-go-
+            ${{ runner.os }}-gomod-
+
+      # Build cache holds incremental compiler output. Keying it only on go.sum
+      # would freeze it: an exact-key match restores but never re-saves, so
+      # later commits keep recompiling from a stale baseline and discard the
+      # fresh output. The per-commit suffix makes every run save a new snapshot;
+      # restore-keys fall back to the most recent prior cache for incremental
+      # reuse.
+      - name: Cache Go build
+        uses: actions/cache@v5.0.5
+        with:
+          path: ~/.cache/go-build
+          key: ${{ runner.os }}-gobuild-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-gobuild-${{ hashFiles('go.sum') }}-
+            ${{ runner.os }}-gobuild-
 
       - name: Cache bun packages
         uses: actions/cache@v5.0.5
