@@ -96,30 +96,30 @@ dir = "web"
 depends = ["web:install"]
 run = "bun run test"
 
-[tasks."api:run"]
-description = "Run the API server."
-depends = ["api:build"]
+[tasks."app:run"]
+description = "Run the app binary (Go server with the embedded SPA)."
+depends = ["app:build"]
 # exec replaces the wrapping shell with the binary so a terminal Ctrl-C
 # (group SIGINT) is delivered straight to the server, which drains and exits
 # 0. Without exec the shell itself reports the interrupt as exit 130.
 run = "exec bin/devopsbin run"
 
 [tasks."compose:dev:up"]
-description = "Start the Docker Compose services."
+description = "Start the dev-profile Docker Compose services."
 # VERSION/COMMIT/BUILD_TIME come from the global [env] section and are
 # interpolated by compose.yaml into the Docker build args.
 run = "docker compose --profile dev up -d --wait --build"
 
 [tasks."compose:dev:down"]
-description = "Stop the Docker Compose services."
+description = "Stop the dev-profile Docker Compose services."
 run = "docker compose --profile dev down -v"
 
-[tasks."ruff:dev"]
+[tasks."lint:ruff"]
 description = "Run ruff linter on the codebase."
 tools = { ruff = "0.15.16" }
 run = "ruff format mise/tasks/ && ruff check mise/tasks/"
 
-[tasks."shellcheck:dev"]
+[tasks."lint:shellcheck"]
 description = "Run shellcheck on the bash file tasks and shared libs."
 tools = { shellcheck = "0.11.0" }
 # File tasks have no extension, so enumerate them by their bash shebang and add

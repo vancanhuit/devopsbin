@@ -78,7 +78,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS="${TARGETOS}" GOARCH="${TARGETARCH}" \
     VERSION="${VERSION}" COMMIT="${COMMIT}" BUILD_TIME="${BUILD_TIME}" \
-    mise run api:build
+    mise run app:build
 
 FROM gcr.io/distroless/static-debian13 AS runtime
 COPY --from=builder /app/bin/devopsbin /devopsbin

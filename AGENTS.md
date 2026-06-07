@@ -18,8 +18,10 @@ mise run api:vulncheck
 mise run api:lint
 mise run api:test:unit
 mise run api:test:integration
-mise run api:build
-mise run api:run
+
+# App (Go server with the embedded SPA)
+mise run app:build
+mise run app:run
 
 # Docker
 mise run docker:hadolint
@@ -36,8 +38,8 @@ mise run compose:test:down
 mise run github:release --dry-run
 
 # Lint / smoke
-mise run shellcheck:dev
-mise run ruff:dev
+mise run lint:shellcheck
+mise run lint:ruff
 mise run smoke:dev
 ```
 
