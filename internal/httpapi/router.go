@@ -99,7 +99,7 @@ func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 func (s *Server) Handler() http.Handler {
 	r := NewRouter(s, s.logger, s.requestTimeout)
 	if s.docsSpec != nil {
-		mountDocs(r, s.docsSpec, s.swaggerFS, s.redocFS)
+		mountDocs(r, s.docsSpec, s.build.Version, s.swaggerFS, s.redocFS)
 	}
 	if s.spaFS != nil {
 		mountSPA(r, s.spaFS, s.spaIndex, s.logger)

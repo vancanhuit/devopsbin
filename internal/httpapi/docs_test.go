@@ -6,6 +6,8 @@ import (
 	"testing"
 	"testing/fstest"
 
+	yaml "github.com/oasdiff/yaml3"
+
 	"github.com/vancanhuit/devopsbin/internal/httpapi"
 )
 
@@ -47,6 +49,32 @@ func TestDocs_ServesOpenAPISpec(t *testing.T) {
 	}
 	if rec.Body.String() != specYAML {
 		t.Errorf("body = %q, want the embedded spec", rec.Body.String())
+	}
+}
+
+func TestDocs_SpecVersionSyncedWithBuild(t *testing.T) {
+	swaggerFS := fstest.MapFS{"index.html": {Data: []byte(swaggerIndex)}}
+	redocFS := fstest.MapFS{"index.html": {Data: []byte(redocIndex)}}
+	h := httpapi.NewServer(
+		httpapi.WithBuildInfo(httpapi.BuildInfo{Version: "v9.9.9-test"}),
+		httpapi.WithDocs([]byte(specYAML), swaggerFS, redocFS),
+	).Handler()
+
+	rec := doGet(t, h, "/api/v1/openapi.yaml")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	var doc struct {
+		Info struct {
+			Version string `yaml:"version"`
+		} `yaml:"info"`
+	}
+	if err := yaml.Unmarshal(rec.Body.Bytes(), &doc); err != nil {
+		t.Fatalf("parse served spec: %v", err)
+	}
+	if doc.Info.Version != "v9.9.9-test" {
+		t.Errorf("info.version = %q, want the build version v9.9.9-test", doc.Info.Version)
 	}
 }
 

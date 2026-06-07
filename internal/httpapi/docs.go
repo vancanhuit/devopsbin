@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	yaml "github.com/oasdiff/yaml3"
 )
 
 // API documentation routes.
@@ -37,9 +38,13 @@ const docsCSP = "default-src 'self'; script-src 'self'; " +
 //   - GET /swagger[/...]       — the embedded Swagger UI console.
 //   - GET /redoc[/...]         — the embedded Redoc console.
 //
-// spec is the OpenAPI document bytes; swaggerFS and redocFS must each be rooted
-// at the corresponding UI build output (containing an index.html).
-func mountDocs(r chi.Router, spec []byte, swaggerFS, redocFS fs.FS) {
+// spec is the OpenAPI document bytes; version, when non-empty, overrides the
+// document's info.version so the consoles report the running binary's version.
+// swaggerFS and redocFS must each be rooted at the corresponding UI build
+// output (containing an index.html).
+func mountDocs(r chi.Router, spec []byte, version string, swaggerFS, redocFS fs.FS) {
+	spec = specWithVersion(spec, version)
+
 	r.Get(specPath, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", specContentType)
 		w.Header().Set("Cache-Control", "no-cache")
@@ -49,6 +54,52 @@ func mountDocs(r chi.Router, spec []byte, swaggerFS, redocFS fs.FS) {
 
 	mountDocsUI(r, swaggerPrefix, swaggerFS)
 	mountDocsUI(r, redocPrefix, redocFS)
+}
+
+// specWithVersion returns spec with its info.version field set to version. It
+// fails open: an empty version or any parse error returns the original bytes
+// unchanged, since the documentation is non-critical and must never break the
+// spec endpoint.
+func specWithVersion(spec []byte, version string) []byte {
+	if version == "" {
+		return spec
+	}
+
+	var doc yaml.Node
+	if err := yaml.Unmarshal(spec, &doc); err != nil || len(doc.Content) == 0 {
+		return spec
+	}
+
+	info := mappingValue(doc.Content[0], "info")
+	if info == nil {
+		return spec
+	}
+	ver := mappingValue(info, "version")
+	if ver == nil {
+		return spec
+	}
+	ver.SetString(version)
+
+	patched, err := yaml.Marshal(&doc)
+	if err != nil {
+		return spec
+	}
+	return patched
+}
+
+// mappingValue returns the value node for key in a YAML mapping node, or nil
+// when the node is not a mapping or the key is absent. Mapping content is a flat
+// slice of alternating key/value nodes.
+func mappingValue(node *yaml.Node, key string) *yaml.Node {
+	if node == nil || node.Kind != yaml.MappingNode {
+		return nil
+	}
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		if node.Content[i].Value == key {
+			return node.Content[i+1]
+		}
+	}
+	return nil
 }
 
 // mountDocsUI serves a static documentation UI rooted at uiFS under prefix. The
