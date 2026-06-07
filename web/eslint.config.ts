@@ -41,6 +41,13 @@ export default ts.config(
     },
   },
   {
-    ignores: ['dist/', 'node_modules/', 'src/lib/generated/'],
+    ignores: [
+      'dist/',
+      'node_modules/',
+      'src/lib/generated/',
+      // Vendored documentation glue and the build-time vendor script.
+      'docs/',
+      'scripts/',
+    ],
   }
 )

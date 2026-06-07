@@ -43,27 +43,43 @@ class Response:
     status: int
     body: bytes
     content_type: str
+    location: str = ""
 
     def json(self) -> object:
         return json.loads(self.body)
 
 
-def http_get(url: str, timeout: float) -> Response:
+def http_get(url: str, timeout: float, *, follow_redirects: bool = True) -> Response:
     req = urllib.request.Request(url, method="GET")
+    opener = (
+        urllib.request.build_opener()
+        if follow_redirects
+        else urllib.request.build_opener(_NoRedirect)
+    )
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 (loopback only)
+        with opener.open(req, timeout=timeout) as resp:  # noqa: S310 (loopback only)
             return Response(
                 status=resp.status,
                 body=resp.read(),
                 content_type=resp.headers.get("Content-Type", ""),
+                location=resp.headers.get("Location", ""),
             )
     except urllib.error.HTTPError as exc:
-        # Non-2xx still carries a status and body we want to inspect.
+        # Non-2xx (including redirects when not followed) still carries a status,
+        # headers, and body we want to inspect.
         return Response(
             status=exc.code,
             body=exc.read(),
             content_type=exc.headers.get("Content-Type", "") if exc.headers else "",
+            location=exc.headers.get("Location", "") if exc.headers else "",
         )
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Surfaces 3xx responses as HTTPError instead of following them."""
+
+    def redirect_request(self, *_args: object, **_kwargs: object) -> None:
+        return None
 
 
 def wait_for_api(base_url: str, timeout: float) -> None:
@@ -154,6 +170,46 @@ def check_spa(base_url: str) -> None:
     print("[ok] / -> 200 text/html (SPA shell)")
 
 
+def check_openapi_spec(base_url: str) -> None:
+    resp = http_get(f"{base_url}{API_PREFIX}/openapi.yaml", timeout=5.0)
+    expect(resp.status == 200, f"openapi spec: status {resp.status}, want 200")
+    expect(
+        "yaml" in resp.content_type,
+        f"openapi spec: content-type {resp.content_type!r}, want yaml",
+    )
+    expect(
+        b"openapi:" in resp.body,
+        "openapi spec: body does not look like an OpenAPI document",
+    )
+    print("[ok] /api/v1/openapi.yaml -> 200 (OpenAPI document)")
+
+
+def check_docs_ui(base_url: str, prefix: str, marker: str) -> None:
+    # The bare prefix redirects to prefix/ so the UI's relative asset URLs
+    # resolve.
+    redirect = http_get(f"{base_url}{prefix}", timeout=5.0, follow_redirects=False)
+    expect(
+        redirect.status == 301,
+        f"{prefix}: status {redirect.status}, want 301 redirect",
+    )
+    expect(
+        redirect.location == f"{prefix}/",
+        f"{prefix}: Location {redirect.location!r}, want {prefix + '/'!r}",
+    )
+
+    resp = http_get(f"{base_url}{prefix}/", timeout=5.0)
+    expect(resp.status == 200, f"{prefix}/: status {resp.status}, want 200")
+    expect(
+        "text/html" in resp.content_type,
+        f"{prefix}/: content-type {resp.content_type!r}, want text/html",
+    )
+    expect(
+        marker.encode() in resp.body,
+        f"{prefix}/: shell missing expected marker {marker!r}",
+    )
+    print(f"[ok] {prefix} -> 301 -> {prefix}/ 200 text/html")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -180,6 +236,9 @@ def main() -> int:
         check_startupz(args.base_url)
         check_version(args.base_url)
         check_spa(args.base_url)
+        check_openapi_spec(args.base_url)
+        check_docs_ui(args.base_url, "/swagger", "swagger-ui")
+        check_docs_ui(args.base_url, "/redoc", "redoc")
 
         print("\nAll smoke checks passed.")
         return 0
