@@ -3,6 +3,8 @@
 #MISE depends=["web:build"]
 #
 #USAGE flag "-o --output <output>" help="Output binary path" default="bin/devopsbin"
+#USAGE flag "--os <os>" help="Target GOOS (defaults to the host)" default=""
+#USAGE flag "--arch <arch>" help="Target GOARCH (defaults to the host)" default=""
 
 set -euo pipefail
 IFS=$'\n\t'
@@ -14,6 +16,13 @@ IFS=$'\n\t'
 # The output path is configurable and defaults to the stable, convenient
 # bin/devopsbin; callers can override it with --output when needed.
 output="${usage_output:?}"
+
+# --os/--arch enable cross-compilation. They default to the host's values so
+# local builds work without any flags, while CI can target other platforms.
+# CGO is disabled so the resulting binary is statically linked and portable.
+GOOS="${usage_os:-$(go env GOOS)}"
+GOARCH="${usage_arch:-$(go env GOARCH)}"
+export GOOS GOARCH CGO_ENABLED=0
 
 go build -ldflags="-s -w -v \
     -X 'github.com/vancanhuit/devopsbin/internal/cli.version=${VERSION:?}' \

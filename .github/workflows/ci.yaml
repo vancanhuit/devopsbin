@@ -117,19 +117,40 @@ jobs:
           mise run api:build
           ./bin/devopsbin --version
 
-      # Resolves the build version for the artifact name (the on-disk binary
+      # Resolves the build version for the artifact names (the on-disk binary
       # name stays stable; upload-artifact compresses the contents).
       - name: Resolve build version
         if: github.event_name == 'pull_request'
         id: meta
         run: echo "version=$(mise env --json | jq -r .VERSION)" >> "$GITHUB_OUTPUT"
 
-      - name: Upload binary artifact
+      # Cross-compile the release binaries for the supported Linux platforms and
+      # upload each as its own artifact (named with the platform and version).
+      - name: Cross-build release binaries
+        if: github.event_name == 'pull_request'
+        run: |
+          for platform in linux/amd64 linux/arm64; do
+            os="${platform%/*}"
+            arch="${platform#*/}"
+            mise run api:build \
+              --os "$os" --arch "$arch" \
+              --output "bin/devopsbin-${os}-${arch}"
+          done
+
+      - name: Upload linux/amd64 binary artifact
         if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v7.0.1
         with:
-          name: devopsbin-${{ steps.meta.outputs.version }}
-          path: bin/devopsbin
+          name: devopsbin-linux-amd64-${{ steps.meta.outputs.version }}
+          path: bin/devopsbin-linux-amd64
+          if-no-files-found: error
+
+      - name: Upload linux/arm64 binary artifact
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: devopsbin-linux-arm64-${{ steps.meta.outputs.version }}
+          path: bin/devopsbin-linux-arm64
           if-no-files-found: error
 
       - name: Smoke test the Compose dev profile
