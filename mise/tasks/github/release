@@ -73,12 +73,20 @@ assets+=("$dist/SHA256SUMS")
 
 mkdir -p "$dist"
 
-# Resolve the previous tag with git's semver-aware sort (so v0.10.0 > v0.9.0),
-# not git-cliff's lexicographic `--latest`. When the tag already exists, render
-# the (prev, tag] range; when it does not yet exist (local preview), render the
-# unreleased commits as this version instead.
-prev_tag="$(git tag --sort=version:refname | grep -B1 "^${tag}$" | head -1 || true)"
-[ "$prev_tag" = "$tag" ] && prev_tag=""
+# Resolve the previous *official* release tag — a plain vMAJOR.MINOR.PATCH tag,
+# excluding pre-releases like v0.0.0-rc1 so the changelog (and its "Full
+# Changelog" link) always diffs one official release against the previous
+# official release. Tags are restricted to the official shape first, then
+# semver-sorted (so v0.10.0 > v0.9.0); this also sidesteps git's default
+# version sort placing a `-suffix` pre-release after its release. We take the
+# newest official tag older than the tag being released (or, when rendering an
+# as-yet-unpushed tag locally, the newest official tag overall).
+prev_tag="$(
+    git tag --list 'v*' --sort=version:refname |
+        grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' |
+        awk -v cur="$tag" '$0 == cur {exit} {prev = $0} END {if (prev != "") print prev}' ||
+        true
+)"
 
 if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
     if [ -n "$prev_tag" ]; then
@@ -87,7 +95,6 @@ if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
         git-cliff --output "$changelog"
     fi
 else
-    prev_tag="$(git tag --sort=version:refname | tail -1 || true)"
     git-cliff --unreleased --tag "$tag" --output "$changelog"
 fi
 
