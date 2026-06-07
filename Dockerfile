@@ -28,7 +28,15 @@ WORKDIR /app
 COPY mise.toml mise.toml
 COPY mise.lock mise.lock
 
+# `mise install` builds go-backend tools (e.g. oapi-codegen) via `go install`,
+# which downloads modules into /go/pkg/mod and compiles through
+# /root/.cache/go-build. Mount both Go caches here -- not just /mise/cache -- so
+# a busted install layer reuses them instead of re-downloading and recompiling
+# the tool from scratch. sharing=locked serializes the per-platform passes over
+# the shared, platform-independent caches.
 RUN --mount=type=cache,target=/mise/cache \
+    --mount=type=cache,target=/go/pkg/mod,sharing=locked \
+    --mount=type=cache,target=/root/.cache/go-build,sharing=locked \
     mise trust && mise install
 
 COPY go.mod go.mod
