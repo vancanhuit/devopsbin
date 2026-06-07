@@ -143,15 +143,15 @@ jobs:
       - name: Scan backend for vulnerabilities
         run: mise run api:vulncheck
 
-      - name: Run unit tests
+      - name: Run backend unit tests
         run: mise run api:test:unit
 
-      - name: Run integration tests
+      - name: Run backend integration tests
         run: mise --env test run api:test:integration
 
       - name: Build and smoke test binary
         run: |
-          mise run api:build
+          mise run app:build
           ./bin/devopsbin --version
 
       # Resolves the build version for the artifact names (the on-disk binary
@@ -168,7 +168,7 @@ jobs:
           for platform in linux/amd64 linux/arm64; do
             os="${platform%/*}"
             arch="${platform#*/}"
-            mise run api:build \
+            mise run app:build \
               --os "$os" --arch "$arch" \
               --output "bin/devopsbin-${os}-${arch}"
           done

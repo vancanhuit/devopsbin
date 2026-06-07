@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# [MISE] description="Build the API server with embedded version information."
+# [MISE] description="Build the app binary (Go server with the embedded SPA) with embedded version information."
 # [MISE] depends=["web:build"]
 #
 # [USAGE] flag "-o --output <output>" help="Output binary path" default="bin/devopsbin"

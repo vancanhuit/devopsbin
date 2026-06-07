@@ -137,7 +137,7 @@ for platform in "${platforms[@]}"; do
     stage="$dist/devopsbin_${tag}_${os}_${arch}"
     archive="$dist/devopsbin_${tag}_${os}_${arch}.tar.gz"
     mkdir -p "$stage"
-    mise run api:build --os "$os" --arch "$arch" --output "$stage/devopsbin"
+    mise run app:build --os "$os" --arch "$arch" --output "$stage/devopsbin"
     tar -czf "$archive" -C "$stage" devopsbin
     rm -rf "$stage"
     # Per-archive checksum (verify one asset without downloading the rest).
