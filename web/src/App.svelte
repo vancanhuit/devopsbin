@@ -1,10 +1,23 @@
 <script lang="ts">
+  import { onMount } from 'svelte'
   import EndpointCard from './lib/EndpointCard.svelte'
-  import { endpoints } from './lib/api'
+  import Footer from './lib/Footer.svelte'
+  import { endpoints, getVersion } from './lib/api'
+
+  let version: string | null = $state(null)
+
+  onMount(async () => {
+    try {
+      const info = await getVersion()
+      version = info.version
+    } catch {
+      // Version fetch is best-effort; don't surface failures to the user.
+    }
+  })
 </script>
 
 <div class="min-h-screen bg-slate-950 text-slate-100">
-  <div class="mx-auto max-w-4xl px-6 py-12">
+  <div class="mx-auto max-w-4xl px-6 pt-12 pb-24">
     <header class="mb-10">
       <div class="flex items-center gap-3">
         <span
@@ -32,11 +45,7 @@
         />
       {/each}
     </main>
-
-    <footer class="mt-12 border-t border-slate-800 pt-6 text-xs text-slate-500">
-      Requests are proxied to the API base
-      <code class="font-mono text-slate-400">/api/v1</code>. Configure the backend origin via
-      <code class="font-mono text-slate-400">VITE_API_PROXY_TARGET</code>.
-    </footer>
   </div>
+
+  <Footer {version} />
 </div>
