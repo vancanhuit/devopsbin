@@ -7,6 +7,7 @@
 // generator after changing `api/openapi.yaml`.
 
 import { Configuration, ResponseError, RuntimeApi, type ApiResponse } from './generated'
+import type { VersionResponse } from './generated'
 
 export type {
   DependencyCheck,
@@ -15,7 +16,6 @@ export type {
   StartupzResponse,
   VersionResponse,
 } from './generated'
-
 // CallResult captures everything the console needs to render a single request:
 // the parsed body, the HTTP status, timing, and any transport-level error.
 export interface CallResult {
@@ -141,4 +141,11 @@ export async function call(path: string): Promise<CallResult> {
       error: err instanceof Error ? err.message : String(err),
     }
   }
+}
+
+// getVersion fetches the running binary's build metadata via the typed client.
+// Used by the console footer to display the app version; callers treat it as
+// best-effort and ignore failures.
+export async function getVersion(): Promise<VersionResponse> {
+  return api.getVersion()
 }
