@@ -42,6 +42,8 @@ if [ "${usage_push:-false}" = "true" ]; then
     output="--push"
 else
     output="--output=type=oci,dest=dist/devopsbin.oci.tar"
+    # buildx will not create the destination directory itself.
+    mkdir -p dist
 fi
 
 # Opt-in supply-chain attestations attached to the image manifest as in-toto
@@ -59,7 +61,11 @@ attest_args=()
 # --metadata-file writes the build result (including containerimage.digest) as
 # JSON so CI can attest the exact digest it just pushed.
 metadata_args=()
-[ -n "${usage_metadata_file:-}" ] && metadata_args+=(--metadata-file "$usage_metadata_file")
+if [ -n "${usage_metadata_file:-}" ]; then
+    # buildx will not create the metadata file's parent directory itself.
+    mkdir -p "$(dirname "$usage_metadata_file")"
+    metadata_args+=(--metadata-file "$usage_metadata_file")
+fi
 
 # Persisted BuildKit layer cache, shared with the Compose build and (in CI)
 # round-tripped through actions/cache. Requires a docker-container builder (the
