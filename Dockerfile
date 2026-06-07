@@ -33,13 +33,18 @@ RUN --mount=type=cache,target=/mise/cache \
 
 COPY go.mod go.mod
 COPY go.sum go.sum
-RUN --mount=type=cache,target=/go/pkg/mod \
+# Module source is platform-independent; sharing=locked serializes the two
+# per-platform builder passes so the first populates the module cache and the
+# second reuses it instead of racing to download the same modules.
+RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
     go mod download
 
 COPY web/package.json web/package.json
 COPY web/bun.lock web/bun.lock
 WORKDIR /app/web
-RUN --mount=type=cache,target=/root/.bun/install/cache \
+# Bun packages are platform-independent too; lock the install cache so the
+# per-platform passes install once and share the result.
+RUN --mount=type=cache,target=/root/.bun/install/cache,sharing=locked \
     bun install --frozen-lockfile
 WORKDIR /app
 
