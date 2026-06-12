@@ -5,8 +5,9 @@
 //	mise run api:test:integration
 //
 // (which brings up the test-profile infra and sets -tags=integration).
-// Requires a live Redis reachable via the loaded config (REDIS_URL), which
-// mise.test.toml (MISE_ENV=test) points at the test-profile instance.
+// Requires a live Redis reachable via the loaded config (REDIS_MODE/REDIS_ADDRS),
+// which mise.test.toml (MISE_ENV=test) points at the standalone test-profile
+// instance (compose service redis-test on localhost:6380).
 
 package cache_test
 
@@ -19,22 +20,23 @@ import (
 	"github.com/vancanhuit/devopsbin/internal/config"
 )
 
-// testRedisURL returns the URL of the test Redis, loaded through the same config
-// package used in production. The mise api:test:integration task sets REDIS_URL
-// via mise.test.toml (MISE_ENV=test) to the test-profile instance (compose
-// service redis-test on localhost:6380).
-func testRedisURL(t *testing.T) string {
+// testRedisConfig returns the Redis settings for the test instance, loaded
+// through the same config package used in production. The mise
+// api:test:integration task sets REDIS_MODE/REDIS_ADDRS via mise.test.toml
+// (MISE_ENV=test) to the standalone test-profile instance (compose service
+// redis-test on localhost:6380).
+func testRedisConfig(t *testing.T) config.RedisConfig {
 	t.Helper()
 	cfg, err := config.Load()
 	if err != nil {
 		t.Fatalf("config.Load: %v", err)
 	}
-	return cfg.Redis.URL
+	return cfg.Redis
 }
 
 func newClient(t *testing.T) *cache.Client {
 	t.Helper()
-	c, err := cache.New(testRedisURL(t))
+	c, err := cache.New(testRedisConfig(t))
 	if err != nil {
 		t.Fatalf("cache.New: %v", err)
 	}
@@ -54,9 +56,12 @@ func TestClient_Ping(t *testing.T) {
 }
 
 func TestClient_Ping_Unreachable(t *testing.T) {
-	// A syntactically valid URL pointing at a port nothing listens on. The
+	// A valid standalone addr pointing at a port nothing listens on. The
 	// client connects lazily, so New succeeds and Ping surfaces the failure.
-	c, err := cache.New("redis://localhost:1/0")
+	c, err := cache.New(config.RedisConfig{
+		Mode:  config.RedisStandalone,
+		Addrs: []string{"localhost:1"},
+	})
 	if err != nil {
 		t.Fatalf("cache.New: %v", err)
 	}

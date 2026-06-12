@@ -25,7 +25,13 @@ var envKeys = []string{
 	"HTTP_SHUTDOWN_TIMEOUT",
 	"HTTP_REQUEST_TIMEOUT",
 	"POSTGRES_URL",
-	"REDIS_URL",
+	"REDIS_MODE",
+	"REDIS_ADDRS",
+	"REDIS_MASTER_NAME",
+	"REDIS_DB",
+	"REDIS_USERNAME",
+	"REDIS_PASSWORD",
+	"REDIS_TLS",
 }
 
 func clearEnv(t *testing.T) {
@@ -79,8 +85,14 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.Postgres.URL != "postgres://user:password@localhost:5432/dbname?sslmode=disable" {
 		t.Errorf("Postgres.URL = %q, want default DSN", cfg.Postgres.URL)
 	}
-	if cfg.Redis.URL != "redis://localhost:6379/0" {
-		t.Errorf("Redis.URL = %q, want default DSN", cfg.Redis.URL)
+	if cfg.Redis.Mode != config.RedisStandalone {
+		t.Errorf("Redis.Mode = %q, want %q", cfg.Redis.Mode, config.RedisStandalone)
+	}
+	if len(cfg.Redis.Addrs) != 1 || cfg.Redis.Addrs[0] != "localhost:6379" {
+		t.Errorf("Redis.Addrs = %v, want [localhost:6379]", cfg.Redis.Addrs)
+	}
+	if cfg.Redis.DB != 0 {
+		t.Errorf("Redis.DB = %d, want 0", cfg.Redis.DB)
 	}
 }
 
@@ -98,7 +110,11 @@ func TestLoad_EnvOverrides(t *testing.T) {
 	t.Setenv("HTTP_SHUTDOWN_TIMEOUT", "4s")
 	t.Setenv("HTTP_REQUEST_TIMEOUT", "30s")
 	t.Setenv("POSTGRES_URL", "postgres://u:p@h:5432/db?sslmode=require")
-	t.Setenv("REDIS_URL", "redis://h:6379/0")
+	t.Setenv("REDIS_MODE", "cluster")
+	t.Setenv("REDIS_ADDRS", "n1:6379,n2:6379,n3:6379")
+	t.Setenv("REDIS_USERNAME", "appuser")
+	t.Setenv("REDIS_PASSWORD", "s3cret")
+	t.Setenv("REDIS_TLS", "true")
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -122,7 +138,13 @@ func TestLoad_EnvOverrides(t *testing.T) {
 			RequestTimeout:  30 * time.Second,
 		},
 		Postgres: config.PostgresConfig{URL: "postgres://u:p@h:5432/db?sslmode=require"},
-		Redis:    config.RedisConfig{URL: "redis://h:6379/0"},
+		Redis: config.RedisConfig{
+			Mode:     config.RedisCluster,
+			Addrs:    []string{"n1:6379", "n2:6379", "n3:6379"},
+			Username: "appuser",
+			Password: "s3cret",
+			TLS:      true,
+		},
 	}
 	if !reflect.DeepEqual(cfg, want) {
 		t.Errorf("cfg = %+v\nwant %+v", cfg, want)
@@ -150,8 +172,9 @@ func TestLoad_InvalidLogLevel(t *testing.T) {
 func TestValidate(t *testing.T) {
 	base := func() config.Config {
 		return config.Config{
-			App:  config.AppConfig{Environment: config.EnvProd, LogLevel: "info"},
-			Http: config.HttpConfig{Addr: ":8080", ReadTimeout: time.Second, WriteTimeout: time.Second, IdleTimeout: time.Second, ShutdownTimeout: time.Second, RequestTimeout: time.Second},
+			App:   config.AppConfig{Environment: config.EnvProd, LogLevel: "info"},
+			Http:  config.HttpConfig{Addr: ":8080", ReadTimeout: time.Second, WriteTimeout: time.Second, IdleTimeout: time.Second, ShutdownTimeout: time.Second, RequestTimeout: time.Second},
+			Redis: config.RedisConfig{Mode: config.RedisStandalone, Addrs: []string{"localhost:6379"}},
 		}
 	}
 
@@ -170,7 +193,30 @@ func TestValidate(t *testing.T) {
 		{"bad env", func(c *config.Config) { c.App.Environment = "qa" }, true},
 		{"bad log level", func(c *config.Config) { c.App.LogLevel = "trace" }, true},
 		{"invalid postgres url", func(c *config.Config) { c.Postgres.URL = "://bad" }, true},
-		{"invalid redis url", func(c *config.Config) { c.Redis.URL = "://bad" }, true},
+		{"invalid redis mode", func(c *config.Config) { c.Redis.Mode = "proxy" }, true},
+		{"empty redis addrs", func(c *config.Config) { c.Redis.Addrs = nil }, true},
+		{"invalid redis addr", func(c *config.Config) { c.Redis.Addrs = []string{"no-port"} }, true},
+		{"standalone multiple addrs", func(c *config.Config) {
+			c.Redis.Addrs = []string{"a:6379", "b:6379"}
+		}, true},
+		{"sentinel without master name", func(c *config.Config) {
+			c.Redis.Mode = config.RedisSentinel
+			c.Redis.Addrs = []string{"s1:26379"}
+		}, true},
+		{"valid sentinel", func(c *config.Config) {
+			c.Redis.Mode = config.RedisSentinel
+			c.Redis.Addrs = []string{"s1:26379", "s2:26379"}
+			c.Redis.MasterName = "mymaster"
+		}, false},
+		{"valid cluster", func(c *config.Config) {
+			c.Redis.Mode = config.RedisCluster
+			c.Redis.Addrs = []string{"n1:6379", "n2:6379", "n3:6379"}
+		}, false},
+		{"cluster with nonzero db", func(c *config.Config) {
+			c.Redis.Mode = config.RedisCluster
+			c.Redis.Addrs = []string{"n1:6379", "n2:6379"}
+			c.Redis.DB = 1
+		}, true},
 	}
 
 	for _, tc := range tests {
@@ -191,7 +237,11 @@ func TestValidate(t *testing.T) {
 func TestRedacted(t *testing.T) {
 	c := config.Config{
 		Postgres: config.PostgresConfig{URL: "postgres://user:secret@host:5432/db"},
-		Redis:    config.RedisConfig{URL: "redis://user:topsecret@host:6379/0"},
+		Redis: config.RedisConfig{
+			Mode:     config.RedisStandalone,
+			Addrs:    []string{"host:6379"},
+			Password: "topsecret",
+		},
 	}
 
 	got := c.Redacted()
@@ -199,8 +249,11 @@ func TestRedacted(t *testing.T) {
 	if got.Postgres.URL != "postgres://user:REDACTED@host:5432/db" {
 		t.Errorf("Postgres.URL = %q, want password redacted", got.Postgres.URL)
 	}
-	if got.Redis.URL != "redis://user:REDACTED@host:6379/0" {
-		t.Errorf("Redis.URL = %q, want password redacted", got.Redis.URL)
+
+	// The Redis password is json:"-" so it is never serialized; the struct
+	// value is left intact by Redacted (callers must never log it directly).
+	if got.Redis.Password != "topsecret" {
+		t.Errorf("Redis.Password = %q, want unchanged", got.Redis.Password)
 	}
 
 	// The original must be untouched.
@@ -212,7 +265,7 @@ func TestRedacted(t *testing.T) {
 func TestRedacted_NoCredentials(t *testing.T) {
 	c := config.Config{
 		Postgres: config.PostgresConfig{URL: "postgres://host:5432/db"},
-		Redis:    config.RedisConfig{URL: ""},
+		Redis:    config.RedisConfig{Mode: config.RedisStandalone, Addrs: []string{"host:6379"}},
 	}
 
 	got := c.Redacted()
@@ -220,7 +273,7 @@ func TestRedacted_NoCredentials(t *testing.T) {
 	if got.Postgres.URL != "postgres://host:5432/db" {
 		t.Errorf("Postgres.URL = %q, want unchanged", got.Postgres.URL)
 	}
-	if got.Redis.URL != "" {
-		t.Errorf("Redis.URL = %q, want empty", got.Redis.URL)
+	if len(got.Redis.Addrs) != 1 || got.Redis.Addrs[0] != "host:6379" {
+		t.Errorf("Redis.Addrs = %v, want [host:6379]", got.Redis.Addrs)
 	}
 }
