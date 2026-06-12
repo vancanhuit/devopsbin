@@ -190,6 +190,12 @@ jobs:
       - name: Smoke test the Compose dev profile
         run: mise run smoke:dev
 
+      - name: Smoke test the Compose cluster profile
+        run: mise run smoke:cluster
+
+      - name: Smoke test the Compose sentinel profile
+        run: mise run smoke:sentinel
+
   # Builds the multi-platform container image. On pull requests it exports an
   # OCI archive (validation, no registry); on pushes to main it pushes the
   # manifest to GHCR. Runs only after the checks above pass.

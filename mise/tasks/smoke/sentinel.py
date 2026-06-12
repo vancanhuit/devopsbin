@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
-# [MISE] description="Smoke test the Compose dev profile (build, up, probe endpoints, down)."
-# [MISE] depends=["compose:dev:up"]
-# [MISE] depends_post=["compose:dev:down"]
+# [MISE] description="Smoke test the Compose sentinel profile (build, up, probe endpoints, down)."
+# [MISE] depends=["compose:sentinel:up"]
+# [MISE] depends_post=["compose:sentinel:down"]
 # [MISE] tools={python="3.14.5"}
-"""Smoke test for the Compose `dev` profile (standalone Redis).
+"""Smoke test for the Compose `sentinel` profile (Redis Sentinel).
 
-Thin wrapper that owns the dev stack lifecycle via its `depends`/`depends_post`
-hooks and delegates the actual probing to the shared `mise/lib/smoke.py`.
+Thin wrapper that owns the sentinel stack lifecycle via its `depends`/
+`depends_post` hooks and delegates the actual probing to the shared
+`mise/lib/smoke.py`.
 
 Examples:
     # Probe the default stack
-    mise run smoke:dev
+    mise run smoke:sentinel
 
     # Point at a non-default host/port
-    mise run smoke:dev -- --base-url http://127.0.0.1:8080
+    mise run smoke:sentinel -- --base-url http://127.0.0.1:8080
 """
 
 from __future__ import annotations

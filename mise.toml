@@ -122,6 +122,26 @@ run = "docker compose --profile test up -d --wait"
 description = "Stop the Docker Compose services for testing."
 run = "docker compose --profile test down -v"
 
+[tasks."compose:cluster:up"]
+description = "Start the cluster-profile stack (api + Redis Cluster)."
+# VERSION/COMMIT/BUILD_TIME come from the global [env] section and are
+# interpolated by compose.yaml into the Docker build args.
+run = "docker compose --profile cluster up -d --wait --build"
+
+[tasks."compose:cluster:down"]
+description = "Stop the cluster-profile Docker Compose services."
+run = "docker compose --profile cluster down -v"
+
+[tasks."compose:sentinel:up"]
+description = "Start the sentinel-profile stack (api + Redis Sentinel)."
+# VERSION/COMMIT/BUILD_TIME come from the global [env] section and are
+# interpolated by compose.yaml into the Docker build args.
+run = "docker compose --profile sentinel up -d --wait --build"
+
+[tasks."compose:sentinel:down"]
+description = "Stop the sentinel-profile Docker Compose services."
+run = "docker compose --profile sentinel down -v"
+
 [tasks."docker:hadolint"]
 description = "Run hadolint on the Dockerfile."
 tools = { hadolint = "2.14.0" }
