@@ -42,6 +42,7 @@
           title={ep.title}
           description={ep.description}
           expectedStatuses={ep.expectedStatuses}
+          params={ep.params}
         />
       {/each}
     </main>

@@ -43,6 +43,11 @@ class SmokeError(Exception):
     """Raised when a smoke check fails."""
 
 
+# Bodies longer than this are truncated in the console log to keep output
+# readable; the full body is still used by the assertions.
+MAX_LOG_BODY = 2000
+
+
 @dataclass
 class Response:
     status: int
@@ -54,12 +59,54 @@ class Response:
         return json.loads(self.body)
 
 
+def _format_payload(body: bytes, content_type: str) -> str:
+    """Render a response/request body for the console log.
+
+    JSON is pretty-printed; other text is shown verbatim; anything that is not
+    valid UTF-8 is summarized by its byte length. Long payloads are truncated.
+    """
+    if not body:
+        return "<empty>"
+    try:
+        text = body.decode("utf-8")
+    except UnicodeDecodeError:
+        return f"<{len(body)} bytes of binary {content_type or 'data'}>"
+    if "json" in content_type:
+        try:
+            text = json.dumps(json.loads(text), indent=2, sort_keys=True)
+        except json.JSONDecodeError:
+            pass
+    if len(text) > MAX_LOG_BODY:
+        text = f"{text[:MAX_LOG_BODY]}\n... (truncated, {len(text)} chars total)"
+    return text
+
+
+def _log_exchange(
+    method: str,
+    url: str,
+    req_headers: dict[str, str] | None,
+    resp: Response,
+) -> None:
+    """Print the request (with any custom headers/body) and response payload."""
+    print(f"  --> {method} {url}")
+    for name, value in (req_headers or {}).items():
+        print(f"      {name}: {value}")
+    print(f"  <-- {resp.status} {resp.content_type or '(no content-type)'}")
+    if resp.location:
+        print(f"      Location: {resp.location}")
+    payload = _format_payload(resp.body, resp.content_type)
+    print(
+        "\n".join(f"      {line}" for line in payload.splitlines()) or "      <empty>"
+    )
+
+
 def http_get(
     url: str,
     timeout: float,
     *,
     follow_redirects: bool = True,
     headers: dict[str, str] | None = None,
+    log: bool = True,
 ) -> Response:
     req = urllib.request.Request(url, method="GET")
     for name, value in (headers or {}).items():
@@ -71,7 +118,7 @@ def http_get(
     )
     try:
         with opener.open(req, timeout=timeout) as resp:  # noqa: S310 (loopback only)
-            return Response(
+            response = Response(
                 status=resp.status,
                 body=resp.read(),
                 content_type=resp.headers.get("Content-Type", ""),
@@ -80,12 +127,15 @@ def http_get(
     except urllib.error.HTTPError as exc:
         # Non-2xx (including redirects when not followed) still carries a status,
         # headers, and body we want to inspect.
-        return Response(
+        response = Response(
             status=exc.code,
             body=exc.read(),
             content_type=exc.headers.get("Content-Type", "") if exc.headers else "",
             location=exc.headers.get("Location", "") if exc.headers else "",
         )
+    if log:
+        _log_exchange("GET", url, headers, response)
+    return response
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -104,7 +154,7 @@ def wait_for_api(base_url: str, timeout: float) -> None:
     while time.monotonic() < deadline:
         attempt += 1
         try:
-            resp = http_get(url, timeout=2.0)
+            resp = http_get(url, timeout=2.0, log=False)
             if resp.status == 200:
                 print(f"API is up after {attempt} attempt(s)")
                 return
@@ -271,6 +321,32 @@ def check_echo(base_url: str) -> None:
     print("[ok] echo -> 200 (reflects method, path, query, headers, origin)")
 
 
+def check_status(base_url: str) -> None:
+    # A teapot is a body-carrying code; assert the echoed code and description.
+    resp = http_get(f"{base_url}{API_PREFIX}/status/418", timeout=5.0)
+    expect(resp.status == 418, f"status/418: status {resp.status}, want 418")
+    body = resp.json()
+    expect(
+        isinstance(body, dict) and body.get("code") == 418,
+        f"status/418: body {body!r}, want code=418",
+    )
+
+    # 204 No Content must carry no body.
+    no_body = http_get(f"{base_url}{API_PREFIX}/status/204", timeout=5.0)
+    expect(no_body.status == 204, f"status/204: status {no_body.status}, want 204")
+    expect(no_body.body == b"", f"status/204: body {no_body.body!r}, want empty")
+
+    # Out-of-range codes are rejected with a 400 and an error body.
+    bad = http_get(f"{base_url}{API_PREFIX}/status/600", timeout=5.0)
+    expect(bad.status == 400, f"status/600: status {bad.status}, want 400")
+    bad_body = bad.json()
+    expect(
+        isinstance(bad_body, dict) and bool(bad_body.get("error")),
+        f"status/600: body {bad_body!r}, want non-empty error",
+    )
+    print("[ok] status/{code} -> echoes code (418), 204 no body, 600 -> 400")
+
+
 def check_spa(base_url: str) -> None:
     resp = http_get(f"{base_url}/", timeout=5.0)
     expect(resp.status == 200, f"spa root: status {resp.status}, want 200")
@@ -335,6 +411,7 @@ def run_checks(base_url: str, timeout: float) -> None:
     check_headers(base_url)
     check_user_agent(base_url)
     check_echo(base_url)
+    check_status(base_url)
     check_spa(base_url)
     check_openapi_spec(base_url)
     check_docs_ui(base_url, "/swagger", "swagger-ui")

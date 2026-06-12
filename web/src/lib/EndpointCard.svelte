@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { call, type CallResult } from './api'
+  import { untrack } from 'svelte'
+  import { call, type CallResult, type EndpointParam } from './api'
 
   interface Props {
     method?: string
@@ -9,17 +10,40 @@
     // Status codes the endpoint may return that should still be treated as a
     // successful call (e.g. readyz returns 503 when not ready).
     expectedStatuses?: number[]
+    // Inputs to collect before calling a parameterized endpoint (e.g. the
+    // {code} segment of /status/{code}). Empty for endpoints with no input.
+    params?: EndpointParam[]
   }
 
-  let { method = 'GET', path, title, description, expectedStatuses = [200] }: Props = $props()
+  let {
+    method = 'GET',
+    path,
+    title,
+    description,
+    expectedStatuses = [200],
+    params = [],
+  }: Props = $props()
 
   let loading = $state(false)
   let result = $state<CallResult | null>(null)
 
+  // values holds the current input for each parameter, seeded once with its
+  // default so the endpoint is callable without edits. params is static config
+  // per card, so untrack makes the initial-only capture explicit.
+  let values = $state<Record<string, string>>(
+    untrack(() => Object.fromEntries(params.map((p) => [p.name, p.defaultValue])))
+  )
+
+  // displayPath substitutes the current input values into the path template so
+  // the user sees the concrete URL they are about to call (e.g. /status/404).
+  const displayPath = $derived(
+    params.reduce((acc, p) => acc.replace(`{${p.name}}`, values[p.name] || `{${p.name}}`), path)
+  )
+
   async function trigger() {
     loading = true
     try {
-      result = await call(path)
+      result = await call(path, values)
     } finally {
       loading = false
     }
@@ -52,7 +76,7 @@
         </span>
         <h2 class="text-base font-semibold text-slate-100">{title}</h2>
       </div>
-      <p class="mt-1 font-mono text-xs text-slate-500">{path}</p>
+      <p class="mt-1 font-mono text-xs text-slate-500">{displayPath}</p>
       <p class="mt-2 text-sm text-slate-400">{description}</p>
     </div>
     <button
@@ -64,6 +88,25 @@
       {loading ? 'Running…' : 'Send'}
     </button>
   </header>
+
+  {#if params.length > 0}
+    <div class="flex flex-wrap gap-3">
+      {#each params as param (param.name)}
+        <label class="flex flex-col gap-1 text-xs">
+          <span class="font-medium text-slate-400">{param.label}</span>
+          <input
+            type={param.type === 'number' ? 'number' : 'text'}
+            bind:value={values[param.name]}
+            min={param.min}
+            max={param.max}
+            placeholder={param.placeholder}
+            disabled={loading}
+            class="w-28 rounded-lg border border-slate-700 bg-slate-950/80 px-2.5 py-1.5 font-mono text-sm text-slate-200 focus:border-sky-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 disabled:opacity-50"
+          />
+        </label>
+      {/each}
+    </div>
+  {/if}
 
   {#if result}
     <div class="flex flex-col gap-2" role="status" aria-live="polite">

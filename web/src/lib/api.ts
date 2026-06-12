@@ -6,7 +6,14 @@
 // uniformly. Do not edit files under `./generated/` by hand; re-run the
 // generator after changing `api/openapi.yaml`.
 
-import { Configuration, ResponseError, InspectApi, RuntimeApi, type ApiResponse } from './generated'
+import {
+  Configuration,
+  ResponseError,
+  InspectApi,
+  RuntimeApi,
+  StatusApi,
+  type ApiResponse,
+} from './generated'
 import type { VersionResponse } from './generated'
 
 export type {
@@ -26,15 +33,22 @@ export interface CallResult {
   error?: string
 }
 
+// CallArgs holds user-supplied values for parameterized endpoints, keyed by the
+// parameter name (e.g. { code: '404' } for /status/{code}). Endpoints without
+// parameters ignore it.
+export type CallArgs = Record<string, string>
+
 // api targets the /api/v1 base path baked into the generated client; in
 // development Vite proxies that prefix to the Go backend (see vite.config.ts).
 const config = new Configuration()
 const api = new RuntimeApi(config)
 const inspect = new InspectApi(config)
+const status = new StatusApi(config)
 
 // rawCalls maps each documented endpoint path to its generated raw call. The
 // *Raw variants return an ApiResponse, exposing both the typed body via
-// value() and the underlying Response for status and timing.
+// value() and the underlying Response for status and timing. Parameterized
+// endpoints receive the user-supplied CallArgs; the rest ignore them.
 const rawCalls = {
   '/livez': () => api.getLivezRaw(),
   '/readyz': () => api.getReadyzRaw(),
@@ -45,10 +59,27 @@ const rawCalls = {
   '/headers': () => inspect.getHeadersRaw(),
   '/user-agent': () => inspect.getUserAgentRaw(),
   '/echo': () => inspect.getEchoRaw(),
-} satisfies Record<string, () => Promise<ApiResponse<unknown>>>
+  '/status/{code}': (args: CallArgs) => status.getStatusRaw({ code: Number(args.code) }),
+} satisfies Record<string, (args: CallArgs) => Promise<ApiResponse<unknown>>>
 
 // EndpointPath is the set of documented API paths the console can call.
 export type EndpointPath = keyof typeof rawCalls
+
+// EndpointParam describes a single user-supplied input for a parameterized
+// endpoint (e.g. the {code} path segment of /status/{code}).
+export interface EndpointParam {
+  // name matches the placeholder in the endpoint path, e.g. "code".
+  name: string
+  label: string
+  // type maps to the HTML input type; "number" inputs are constrained by
+  // min/max and submitted as their string value.
+  type: 'number' | 'text'
+  // defaultValue pre-fills the input so the endpoint is callable as-is.
+  defaultValue: string
+  min?: number
+  max?: number
+  placeholder?: string
+}
 
 // Endpoint describes a documented endpoint for both invocation and display.
 // This is the single source of truth consumed by the UI; the path is typed
@@ -61,6 +92,9 @@ export interface Endpoint {
   // Status codes the endpoint may return that should still be treated as a
   // documented (expected) response, e.g. readyz returns 503 when not ready.
   expectedStatuses: number[]
+  // params lists the inputs the console must collect before calling a
+  // parameterized endpoint. Omitted for endpoints that take no input.
+  params?: EndpointParam[]
 }
 
 export const endpoints: readonly Endpoint[] = [
@@ -127,6 +161,24 @@ export const endpoints: readonly Endpoint[] = [
     description: 'Reflects the request method, path, query, headers, and origin IP.',
     expectedStatuses: [200],
   },
+  {
+    method: 'GET',
+    path: '/status/{code}',
+    title: 'Status',
+    description: 'Returns the HTTP status code given in the path.',
+    expectedStatuses: [200],
+    params: [
+      {
+        name: 'code',
+        label: 'Status code',
+        type: 'number',
+        defaultValue: '200',
+        min: 100,
+        max: 599,
+        placeholder: '100–599',
+      },
+    ],
+  },
 ]
 
 function elapsedMs(start: number): number {
@@ -146,18 +198,21 @@ async function parseBody(res: Response): Promise<unknown> {
 }
 
 // call performs the documented request for the given API path and returns a
-// normalized CallResult. Documented non-2xx responses (e.g. readyz 503) are
-// reported with their status and parsed body; only transport failures (network
-// errors, unknown paths) set `error`.
-export async function call(path: string): Promise<CallResult> {
-  const raw = (rawCalls as Record<string, (() => Promise<ApiResponse<unknown>>) | undefined>)[path]
+// normalized CallResult. Parameterized endpoints receive their user-supplied
+// args. Documented non-2xx responses (e.g. readyz 503) are reported with their
+// status and parsed body; only transport failures (network errors, unknown
+// paths) set `error`.
+export async function call(path: string, args: CallArgs = {}): Promise<CallResult> {
+  const raw = (
+    rawCalls as Record<string, ((args: CallArgs) => Promise<ApiResponse<unknown>>) | undefined>
+  )[path]
   if (!raw) {
     return { ok: false, status: 0, durationMs: 0, body: null, error: `unknown endpoint: ${path}` }
   }
 
   const start = performance.now()
   try {
-    const res = await raw()
+    const res = await raw(args)
     return {
       ok: res.raw.ok,
       status: res.raw.status,

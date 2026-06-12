@@ -13,6 +13,8 @@ tags:
     description: Runtime, health probe, and build metadata endpoints.
   - name: Inspect
     description: Request-reflection endpoints that echo back details of the incoming request.
+  - name: Status
+    description: Endpoints that return a caller-specified HTTP status code.
 
 paths:
   /livez:
@@ -162,6 +164,41 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/EchoResponse"
+
+  /status/{code}:
+    get:
+      operationId: getStatus
+      tags:
+        - Status
+      summary: Return a given HTTP status code
+      description: >
+        Responds with the HTTP status code provided in the path. The code must
+        be a valid HTTP status code in the range 100-599; any other value yields
+        a 400 response.
+      parameters:
+        - name: code
+          in: path
+          required: true
+          description: The HTTP status code to return (100-599).
+          schema:
+            type: integer
+            format: int32
+            minimum: 100
+            maximum: 599
+            example: 200
+      responses:
+        default:
+          description: The HTTP status code requested by the caller.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        "400":
+          description: The requested status code is outside the valid range.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
 components:
   schemas:
@@ -350,3 +387,30 @@ components:
           - application/json
         User-Agent:
           - curl/8.7.1
+
+    StatusResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - code
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: The HTTP status code returned.
+          example: 200
+        description:
+          type: string
+          description: The canonical reason phrase for the status code, if known.
+          example: OK
+
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: A human-readable description of the error.
+          example: status code must be in the range 100-599
