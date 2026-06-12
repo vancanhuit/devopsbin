@@ -1,13 +1,16 @@
 apis/InspectApi.ts
+apis/LatencyApi.ts
 apis/RuntimeApi.ts
 apis/StatusApi.ts
 apis/index.ts
+docs/DelayResponse.md
 docs/DependencyCheck.md
 docs/EchoResponse.md
 docs/ErrorResponse.md
 docs/HeadersResponse.md
 docs/InspectApi.md
 docs/IpResponse.md
+docs/LatencyApi.md
 docs/LivezResponse.md
 docs/ReadyzResponse.md
 docs/RuntimeApi.md
@@ -18,6 +21,7 @@ docs/UserAgentResponse.md
 docs/UuidResponse.md
 docs/VersionResponse.md
 index.ts
+models/DelayResponse.ts
 models/DependencyCheck.ts
 models/EchoResponse.ts
 models/ErrorResponse.ts

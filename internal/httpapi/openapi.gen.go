@@ -94,6 +94,12 @@ func (e StartupzResponseStatus) Valid() bool {
 	}
 }
 
+// DelayResponse defines model for DelayResponse.
+type DelayResponse struct {
+	// Delay The number of seconds the response was delayed.
+	Delay float64 `json:"delay"`
+}
+
 // DependencyCheck defines model for DependencyCheck.
 type DependencyCheck struct {
 	Message *string               `json:"message,omitempty"`
@@ -195,6 +201,9 @@ type VersionResponse struct {
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// Delay the response by a given number of seconds
+	// (GET /delay/{seconds})
+	GetDelay(w http.ResponseWriter, r *http.Request, seconds float64)
 	// Echo the incoming request
 	// (GET /echo)
 	GetEcho(w http.ResponseWriter, r *http.Request)
@@ -230,6 +239,12 @@ type ServerInterface interface {
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
 
 type Unimplemented struct{}
+
+// Delay the response by a given number of seconds
+// (GET /delay/{seconds})
+func (_ Unimplemented) GetDelay(w http.ResponseWriter, r *http.Request, seconds float64) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
 
 // Echo the incoming request
 // (GET /echo)
@@ -299,6 +314,32 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// GetDelay operation middleware
+func (siw *ServerInterfaceWrapper) GetDelay(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "seconds" -------------
+	var seconds float64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "seconds", chi.URLParam(r, "seconds"), &seconds, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "number", Format: "double"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "seconds", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDelay(w, r, seconds)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // GetEcho operation middleware
 func (siw *ServerInterfaceWrapper) GetEcho(w http.ResponseWriter, r *http.Request) {
@@ -566,6 +607,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	}
 
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/delay/{seconds}", wrapper.GetDelay)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/echo", wrapper.GetEcho)
 	})
 	r.Group(func(r chi.Router) {
@@ -597,6 +641,42 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 
 	return r
+}
+
+type GetDelayRequestObject struct {
+	Seconds float64 `json:"seconds"`
+}
+
+type GetDelayResponseObject interface {
+	VisitGetDelayResponse(w http.ResponseWriter) error
+}
+
+type GetDelay200JSONResponse DelayResponse
+
+func (response GetDelay200JSONResponse) VisitGetDelayResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDelay400JSONResponse ErrorResponse
+
+func (response GetDelay400JSONResponse) VisitGetDelayResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type GetEchoRequestObject struct {
@@ -857,6 +937,9 @@ func (response GetVersion200JSONResponse) VisitGetVersionResponse(w http.Respons
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// Delay the response by a given number of seconds
+	// (GET /delay/{seconds})
+	GetDelay(ctx context.Context, request GetDelayRequestObject) (GetDelayResponseObject, error)
 	// Echo the incoming request
 	// (GET /echo)
 	GetEcho(ctx context.Context, request GetEchoRequestObject) (GetEchoResponseObject, error)
@@ -916,6 +999,32 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// GetDelay operation middleware
+func (sh *strictHandler) GetDelay(w http.ResponseWriter, r *http.Request, seconds float64) {
+	var request GetDelayRequestObject
+
+	request.Seconds = seconds
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetDelay(ctx, request.(GetDelayRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetDelay")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetDelayResponseObject); ok {
+		if err := validResponse.VisitGetDelayResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // GetEcho operation middleware
@@ -1165,38 +1274,43 @@ func (sh *strictHandler) GetVersion(w http.ResponseWriter, r *http.Request) {
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"zFltb+O4Ef4rA7ZA7wD5LcleL+6nXHdxa3QPm+5m70OvwYISxxYvEqkjKe+5gf97MZRk64W2s2ncFsgH",
-	"WSKHM88MZ+aZPLJE54VWqJxl80dmkxRz7h9fY4FKoEo2f00xeaBXXAjppFY8uzW6QOMkWjZf8sxixIrW",
-	"q0eWo7V8hfSIv/O8yJDNmdiJBGkhRZ65dMMi5jYFfbbOSLVi24hZx13p5aAqczb/hekHFjE0RhsWMfsg",
-	"iwIFu49awv2KnqRtxAz+VkqDgoTUYu9363T8KyaOTnyTpPoD2kIri19paopcoPGPfzS4ZHP2h8ke1UkN",
-	"6eStX/YTL+i4HF2qRRedH9/chbDQRq6koqUCbWJkQWqxObtLERKeZWj+ZKFaBItb4EIYtHbM2thcTC/H",
-	"0/Fsdjm+ugidUXCXdpWZ8EJO1rMJJqkO7fitRLP5CpN7nqjtr09uxEU7LHdmB31FYfBMZ1UhNADzBtIy",
-	"52pkkAseZwitz6CX4FIEv7WLaxVQkGiBkJfWQYwglV9tuFohzKbT0avr65ORWakVMnaP4UFDH5l0mPuH",
-	"gZ/qF9wYvqHffbNzXhRSrchGxXO04DSpLw1k0jp6veZZiTaC0qKApTYQa5fC27u7W6i9BVwJ8B6Eghue",
-	"o6OX3yBPUsj5BnhRIDeQa4PgUq5AqwS/Hf9TtbF8ZDdJgoUjNHhRZDLhpOTkV6t9FHyyaEY3K1R+RVKa",
-	"bPL9+M/jGbvfHkTN/tdudM+djYCQQxfFM7U6fyLoWXHkCr6Ta/zXM+0IJvcXTOUfkIvNc5VLqNbZY3ft",
-	"WET0a+a2E+C5XBkf1B0YyFpKwdq6lcHQJ4NCDt+Hwn4ILSU0SqxKu8/Vcwfp5vOTwI4adEKof3TcuLL4",
-	"f8Q90WopVwFgjzjkaehaMhqpjvknwu6+Vx/q7y8CsCufm9GoQoUzh0/k7Tpm0JVGoegkjovpNGJLbXLu",
-	"2JxJ5S5b6UMqhys0g/ISTlRKK5nwDAxyqxUUqeEWfWGhstnSJAK5hAelv6huDnv/t5N4enNDIFIV8UXk",
-	"mTiWVIV4VYXa7VKrHp3SrSUiqGEpxXOVK6UItTaGK6HzbAMrVGi4QwFrNJZamyv49GnxuovvLL4W38WJ",
-	"GMXxUoyu4gsxuo5fiRGPvxfLOBZXsY/oXTT4Y09aTYtC9v5cafJMk+NSZuKzk3mPaVxML74bTenvbjad",
-	"T+nvH22dBXc48tsCve1Kus825V2JPE5mF5fB5fpzDWd3x0rPxhdX46sgwUGzlsmAHq11YWOpRryQoV3B",
-	"Y6bj2Xh6OsPUB+6F7O2M2jB27Bk6jORKtdTDOPtJKpnzDN4XqG5uF1DlPgO2wMRf79e4fl/YH6QCUyo6",
-	"C1CJQkvlfJPipPP27Jfd3C5a+jaWEiUqUBFEc0bdzGVNI3xAVIRl/shW6IY6fvC5zYJAx2Vmm85eqkTn",
-	"1AUTYmjdvMqKFUmJgIRHgwY3atrfyPe/w8bL97cUrL7ELARRPHRvKkJl6nj3Sl9Mp3WdcnVmGXTAO25+",
-	"qhR2iKx31yAd4DLDpM1s+vaPffjYMs85kTxPjoMLyW18ZSnAFooc7dg9bZ20OuijjnBNBWqohMEE5RoF",
-	"fJEurYhUo1MAzLc7ung2PPtMIgDp3V7Lxo6DCPbWHQRQFk/CbhB1h10agG9RnBO5FtE5ANox1tLFr7LZ",
-	"W7bbtF99EMWMaMpBIG+NTtDakVbZBmipIgB9CzaG1xqUdtUvuK2a849/fwfawAfqxyFFg0FUPTc6J7Bd",
-	"8hXAtjYMpAVOdvXRfNfYWhgdYwu9D1VirtHz5OAwfL7VtvAlRZdi1b21bKLDvQBwurnV4AxfLmUShK2i",
-	"befErUcMQ8kxoP+YKs6r6eX/Tg2Kw0aV3q3gQj7BkbbmZk91ZduN9V5IOXXl1HO4ihsMHNgwwHO6cMAy",
-	"T6DXaC/3yr+4P/8DnayTWQZSkf9WobxXyz7tX1faySPRnu2RukH6CbsvrQPuVxi9lgJFM8SkzmcMPlW3",
-	"R5wc1jyTYrg/NPv8C3C1Ae0Dy88SYSMxExY4XE2n0ITKgXbpY8OM940Xm//yJCLr844vG9/UqnxLcStp",
-	"Qz12Vjz37I3oYrtfdqbEqOX+Ezw457/LvMzZ/NX1dcRyaoTp14wW9zny9r53Pa5esvnrTMaPtyoouq6z",
-	"oEtnJQGXYu1g78hxReyXvMzcS16a9jTjgKqB4USje7xpdQMH2gUOK6p0AzGti1THV3WPuuz+ZPO1H0nX",
-	"7dxXdq+7YcQ5M+Zw4nGig91bdbCJHRh+sAFrRhJHseRPm1AM8asGD+eDrj2KCVMpr7fXcH3Vh+vH2pad",
-	"fX7dQaha5L5Ga2Dwzzvqfjab++OYgNn1EqLHXHDH+3b/UMpMeE687q0MF7B6HBLO7De3C1jPIOa2qkYs",
-	"YqXJ9v+gZJRPa6GD+KrOiOr/NFdFtGLrfuCx06s7iKiLQqPhNhrGrb8poxaR3gkAl3IHSDcl5snDqUlD",
-	"67wmGobnvekKN01yq3LfiLbJpcRhPW5Jr/Pc9n777wAAAP//",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

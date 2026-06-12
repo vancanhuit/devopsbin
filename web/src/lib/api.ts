@@ -10,6 +10,7 @@ import {
   Configuration,
   ResponseError,
   InspectApi,
+  LatencyApi,
   RuntimeApi,
   StatusApi,
   type ApiResponse,
@@ -44,6 +45,7 @@ const config = new Configuration()
 const api = new RuntimeApi(config)
 const inspect = new InspectApi(config)
 const status = new StatusApi(config)
+const latency = new LatencyApi(config)
 
 // rawCalls maps each documented endpoint path to its generated raw call. The
 // *Raw variants return an ApiResponse, exposing both the typed body via
@@ -60,6 +62,7 @@ const rawCalls = {
   '/user-agent': () => inspect.getUserAgentRaw(),
   '/echo': () => inspect.getEchoRaw(),
   '/status/{code}': (args: CallArgs) => status.getStatusRaw({ code: Number(args.code) }),
+  '/delay/{seconds}': (args: CallArgs) => latency.getDelayRaw({ seconds: Number(args.seconds) }),
 } satisfies Record<string, (args: CallArgs) => Promise<ApiResponse<unknown>>>
 
 // EndpointPath is the set of documented API paths the console can call.
@@ -176,6 +179,24 @@ export const endpoints: readonly Endpoint[] = [
         min: 100,
         max: 599,
         placeholder: '100–599',
+      },
+    ],
+  },
+  {
+    method: 'GET',
+    path: '/delay/{seconds}',
+    title: 'Delay',
+    description: 'Waits the given number of seconds (capped at 10) before responding.',
+    expectedStatuses: [200],
+    params: [
+      {
+        name: 'seconds',
+        label: 'Seconds',
+        type: 'number',
+        defaultValue: '1',
+        min: 0,
+        max: 10,
+        placeholder: '0–10',
       },
     ],
   },
