@@ -6,7 +6,7 @@
 // uniformly. Do not edit files under `./generated/` by hand; re-run the
 // generator after changing `api/openapi.yaml`.
 
-import { Configuration, ResponseError, RuntimeApi, type ApiResponse } from './generated'
+import { Configuration, ResponseError, InspectApi, RuntimeApi, type ApiResponse } from './generated'
 import type { VersionResponse } from './generated'
 
 export type {
@@ -28,7 +28,9 @@ export interface CallResult {
 
 // api targets the /api/v1 base path baked into the generated client; in
 // development Vite proxies that prefix to the Go backend (see vite.config.ts).
-const api = new RuntimeApi(new Configuration())
+const config = new Configuration()
+const api = new RuntimeApi(config)
+const inspect = new InspectApi(config)
 
 // rawCalls maps each documented endpoint path to its generated raw call. The
 // *Raw variants return an ApiResponse, exposing both the typed body via
@@ -38,6 +40,11 @@ const rawCalls = {
   '/readyz': () => api.getReadyzRaw(),
   '/startupz': () => api.getStartupzRaw(),
   '/version': () => api.getVersionRaw(),
+  '/uuid': () => inspect.getUuidRaw(),
+  '/ip': () => inspect.getIpRaw(),
+  '/headers': () => inspect.getHeadersRaw(),
+  '/user-agent': () => inspect.getUserAgentRaw(),
+  '/echo': () => inspect.getEchoRaw(),
 } satisfies Record<string, () => Promise<ApiResponse<unknown>>>
 
 // EndpointPath is the set of documented API paths the console can call.
@@ -83,6 +90,41 @@ export const endpoints: readonly Endpoint[] = [
     path: '/version',
     title: 'Version',
     description: 'Build and version metadata for the running binary.',
+    expectedStatuses: [200],
+  },
+  {
+    method: 'GET',
+    path: '/uuid',
+    title: 'UUID',
+    description: 'Returns a randomly generated version 4 UUID.',
+    expectedStatuses: [200],
+  },
+  {
+    method: 'GET',
+    path: '/ip',
+    title: 'IP',
+    description: "Returns the caller's origin IP address.",
+    expectedStatuses: [200],
+  },
+  {
+    method: 'GET',
+    path: '/headers',
+    title: 'Headers',
+    description: 'Echoes the HTTP headers received with the request.',
+    expectedStatuses: [200],
+  },
+  {
+    method: 'GET',
+    path: '/user-agent',
+    title: 'User-Agent',
+    description: 'Echoes the User-Agent header received with the request.',
+    expectedStatuses: [200],
+  },
+  {
+    method: 'GET',
+    path: '/echo',
+    title: 'Echo',
+    description: 'Reflects the request method, path, query, headers, and origin IP.',
     expectedStatuses: [200],
   },
 ]

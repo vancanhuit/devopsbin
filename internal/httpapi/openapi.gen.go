@@ -18,6 +18,7 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/go-chi/chi/v5"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // Defines values for DependencyCheckStatus.
@@ -101,6 +102,35 @@ type DependencyCheck struct {
 // DependencyCheckStatus defines model for DependencyCheck.Status.
 type DependencyCheckStatus string
 
+// EchoResponse defines model for EchoResponse.
+type EchoResponse struct {
+	// Headers A mapping of names to their list of values, used for both HTTP headers and query parameters (each may appear more than once).
+	Headers HeaderMap `json:"headers"`
+	Method  string    `json:"method"`
+
+	// Origin The caller's origin IP address.
+	Origin string `json:"origin"`
+	Path   string `json:"path"`
+
+	// Query A mapping of names to their list of values, used for both HTTP headers and query parameters (each may appear more than once).
+	Query HeaderMap `json:"query"`
+}
+
+// HeaderMap A mapping of names to their list of values, used for both HTTP headers and query parameters (each may appear more than once).
+type HeaderMap map[string][]string
+
+// HeadersResponse defines model for HeadersResponse.
+type HeadersResponse struct {
+	// Headers A mapping of names to their list of values, used for both HTTP headers and query parameters (each may appear more than once).
+	Headers HeaderMap `json:"headers"`
+}
+
+// IpResponse defines model for IpResponse.
+type IpResponse struct {
+	// Origin The caller's origin IP address.
+	Origin string `json:"origin"`
+}
+
 // LivezResponse defines model for LivezResponse.
 type LivezResponse struct {
 	Status LivezResponseStatus `json:"status"`
@@ -127,6 +157,17 @@ type StartupzResponse struct {
 // StartupzResponseStatus defines model for StartupzResponse.Status.
 type StartupzResponseStatus string
 
+// UserAgentResponse defines model for UserAgentResponse.
+type UserAgentResponse struct {
+	UserAgent string `json:"user-agent"`
+}
+
+// UuidResponse defines model for UuidResponse.
+type UuidResponse struct {
+	// Uuid A randomly generated version 4 UUID.
+	Uuid openapi_types.UUID `json:"uuid"`
+}
+
 // VersionResponse defines model for VersionResponse.
 type VersionResponse struct {
 	BuildTime time.Time `json:"build_time"`
@@ -138,6 +179,15 @@ type VersionResponse struct {
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// Echo the incoming request
+	// (GET /echo)
+	GetEcho(w http.ResponseWriter, r *http.Request)
+	// Echo the request headers
+	// (GET /headers)
+	GetHeaders(w http.ResponseWriter, r *http.Request)
+	// Return the caller's IP address
+	// (GET /ip)
+	GetIp(w http.ResponseWriter, r *http.Request)
 	// Liveness probe
 	// (GET /livez)
 	GetLivez(w http.ResponseWriter, r *http.Request)
@@ -147,6 +197,12 @@ type ServerInterface interface {
 	// Startup probe
 	// (GET /startupz)
 	GetStartupz(w http.ResponseWriter, r *http.Request)
+	// Echo the User-Agent header
+	// (GET /user-agent)
+	GetUserAgent(w http.ResponseWriter, r *http.Request)
+	// Generate a random UUID
+	// (GET /uuid)
+	GetUuid(w http.ResponseWriter, r *http.Request)
 	// Build and version metadata
 	// (GET /version)
 	GetVersion(w http.ResponseWriter, r *http.Request)
@@ -155,6 +211,24 @@ type ServerInterface interface {
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
 
 type Unimplemented struct{}
+
+// Echo the incoming request
+// (GET /echo)
+func (_ Unimplemented) GetEcho(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Echo the request headers
+// (GET /headers)
+func (_ Unimplemented) GetHeaders(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Return the caller's IP address
+// (GET /ip)
+func (_ Unimplemented) GetIp(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
 
 // Liveness probe
 // (GET /livez)
@@ -174,6 +248,18 @@ func (_ Unimplemented) GetStartupz(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Echo the User-Agent header
+// (GET /user-agent)
+func (_ Unimplemented) GetUserAgent(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Generate a random UUID
+// (GET /uuid)
+func (_ Unimplemented) GetUuid(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // Build and version metadata
 // (GET /version)
 func (_ Unimplemented) GetVersion(w http.ResponseWriter, r *http.Request) {
@@ -188,6 +274,48 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// GetEcho operation middleware
+func (siw *ServerInterfaceWrapper) GetEcho(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetEcho(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetHeaders operation middleware
+func (siw *ServerInterfaceWrapper) GetHeaders(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetHeaders(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetIp operation middleware
+func (siw *ServerInterfaceWrapper) GetIp(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetIp(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // GetLivez operation middleware
 func (siw *ServerInterfaceWrapper) GetLivez(w http.ResponseWriter, r *http.Request) {
@@ -222,6 +350,34 @@ func (siw *ServerInterfaceWrapper) GetStartupz(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetStartupz(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetUserAgent operation middleware
+func (siw *ServerInterfaceWrapper) GetUserAgent(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetUserAgent(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetUuid operation middleware
+func (siw *ServerInterfaceWrapper) GetUuid(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetUuid(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -359,6 +515,15 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	}
 
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/echo", wrapper.GetEcho)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/headers", wrapper.GetHeaders)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/ip", wrapper.GetIp)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/livez", wrapper.GetLivez)
 	})
 	r.Group(func(r chi.Router) {
@@ -368,10 +533,79 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/startupz", wrapper.GetStartupz)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/user-agent", wrapper.GetUserAgent)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/uuid", wrapper.GetUuid)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/version", wrapper.GetVersion)
 	})
 
 	return r
+}
+
+type GetEchoRequestObject struct {
+}
+
+type GetEchoResponseObject interface {
+	VisitGetEchoResponse(w http.ResponseWriter) error
+}
+
+type GetEcho200JSONResponse EchoResponse
+
+func (response GetEcho200JSONResponse) VisitGetEchoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetHeadersRequestObject struct {
+}
+
+type GetHeadersResponseObject interface {
+	VisitGetHeadersResponse(w http.ResponseWriter) error
+}
+
+type GetHeaders200JSONResponse HeadersResponse
+
+func (response GetHeaders200JSONResponse) VisitGetHeadersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIpRequestObject struct {
+}
+
+type GetIpResponseObject interface {
+	VisitGetIpResponse(w http.ResponseWriter) error
+}
+
+type GetIp200JSONResponse IpResponse
+
+func (response GetIp200JSONResponse) VisitGetIpResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type GetLivezRequestObject struct {
@@ -465,6 +699,48 @@ func (response GetStartupz503JSONResponse) VisitGetStartupzResponse(w http.Respo
 	return err
 }
 
+type GetUserAgentRequestObject struct {
+}
+
+type GetUserAgentResponseObject interface {
+	VisitGetUserAgentResponse(w http.ResponseWriter) error
+}
+
+type GetUserAgent200JSONResponse UserAgentResponse
+
+func (response GetUserAgent200JSONResponse) VisitGetUserAgentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetUuidRequestObject struct {
+}
+
+type GetUuidResponseObject interface {
+	VisitGetUuidResponse(w http.ResponseWriter) error
+}
+
+type GetUuid200JSONResponse UuidResponse
+
+func (response GetUuid200JSONResponse) VisitGetUuidResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetVersionRequestObject struct {
 }
 
@@ -488,6 +764,15 @@ func (response GetVersion200JSONResponse) VisitGetVersionResponse(w http.Respons
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// Echo the incoming request
+	// (GET /echo)
+	GetEcho(ctx context.Context, request GetEchoRequestObject) (GetEchoResponseObject, error)
+	// Echo the request headers
+	// (GET /headers)
+	GetHeaders(ctx context.Context, request GetHeadersRequestObject) (GetHeadersResponseObject, error)
+	// Return the caller's IP address
+	// (GET /ip)
+	GetIp(ctx context.Context, request GetIpRequestObject) (GetIpResponseObject, error)
 	// Liveness probe
 	// (GET /livez)
 	GetLivez(ctx context.Context, request GetLivezRequestObject) (GetLivezResponseObject, error)
@@ -497,6 +782,12 @@ type StrictServerInterface interface {
 	// Startup probe
 	// (GET /startupz)
 	GetStartupz(ctx context.Context, request GetStartupzRequestObject) (GetStartupzResponseObject, error)
+	// Echo the User-Agent header
+	// (GET /user-agent)
+	GetUserAgent(ctx context.Context, request GetUserAgentRequestObject) (GetUserAgentResponseObject, error)
+	// Generate a random UUID
+	// (GET /uuid)
+	GetUuid(ctx context.Context, request GetUuidRequestObject) (GetUuidResponseObject, error)
 	// Build and version metadata
 	// (GET /version)
 	GetVersion(ctx context.Context, request GetVersionRequestObject) (GetVersionResponseObject, error)
@@ -529,6 +820,78 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// GetEcho operation middleware
+func (sh *strictHandler) GetEcho(w http.ResponseWriter, r *http.Request) {
+	var request GetEchoRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetEcho(ctx, request.(GetEchoRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetEcho")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetEchoResponseObject); ok {
+		if err := validResponse.VisitGetEchoResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetHeaders operation middleware
+func (sh *strictHandler) GetHeaders(w http.ResponseWriter, r *http.Request) {
+	var request GetHeadersRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetHeaders(ctx, request.(GetHeadersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetHeaders")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetHeadersResponseObject); ok {
+		if err := validResponse.VisitGetHeadersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetIp operation middleware
+func (sh *strictHandler) GetIp(w http.ResponseWriter, r *http.Request) {
+	var request GetIpRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetIp(ctx, request.(GetIpRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetIp")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetIpResponseObject); ok {
+		if err := validResponse.VisitGetIpResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // GetLivez operation middleware
@@ -603,6 +966,54 @@ func (sh *strictHandler) GetStartupz(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// GetUserAgent operation middleware
+func (sh *strictHandler) GetUserAgent(w http.ResponseWriter, r *http.Request) {
+	var request GetUserAgentRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetUserAgent(ctx, request.(GetUserAgentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetUserAgent")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetUserAgentResponseObject); ok {
+		if err := validResponse.VisitGetUserAgentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetUuid operation middleware
+func (sh *strictHandler) GetUuid(w http.ResponseWriter, r *http.Request) {
+	var request GetUuidRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetUuid(ctx, request.(GetUuidRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetUuid")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetUuidResponseObject); ok {
+		if err := validResponse.VisitGetUuidResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetVersion operation middleware
 func (sh *strictHandler) GetVersion(w http.ResponseWriter, r *http.Request) {
 	var request GetVersionRequestObject
@@ -632,21 +1043,32 @@ func (sh *strictHandler) GetVersion(w http.ResponseWriter, r *http.Request) {
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
+	"PEFMk7tjE1JjvV01bG+2vwUAAP//",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

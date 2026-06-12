@@ -36,6 +36,7 @@ func NewRouter(si StrictServerInterface, logger *slog.Logger, requestTimeout tim
 	r.Use(middleware.Recoverer)
 	r.Use(securityHeaders)
 	r.Use(middleware.ClientIPFromRemoteAddr)
+	r.Use(withRequest)
 	r.Use(middleware.Timeout(requestTimeout))
 
 	handler := NewStrictHandler(si, nil)

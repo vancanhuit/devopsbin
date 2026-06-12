@@ -147,7 +147,7 @@ jobs:
         run: mise run api:test:unit
 
       - name: Run backend integration tests
-        run: mise --env test run api:test:integration
+        run: mise run api:test:integration
 
       - name: Build and smoke test binary
         run: |

@@ -11,6 +11,8 @@ servers:
 tags:
   - name: Runtime
     description: Runtime, health probe, and build metadata endpoints.
+  - name: Inspect
+    description: Request-reflection endpoints that echo back details of the incoming request.
 
 paths:
   /livez:
@@ -83,6 +85,83 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/VersionResponse"
+
+  /uuid:
+    get:
+      operationId: getUuid
+      tags:
+        - Inspect
+      summary: Generate a random UUID
+      description: Returns a randomly generated version 4 UUID.
+      responses:
+        "200":
+          description: A random UUIDv4.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UuidResponse"
+
+  /ip:
+    get:
+      operationId: getIp
+      tags:
+        - Inspect
+      summary: Return the caller's IP address
+      description: Returns the origin IP address of the incoming request.
+      responses:
+        "200":
+          description: The caller's origin IP address.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IpResponse"
+
+  /headers:
+    get:
+      operationId: getHeaders
+      tags:
+        - Inspect
+      summary: Echo the request headers
+      description: Returns the HTTP headers received with the request.
+      responses:
+        "200":
+          description: The request headers.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HeadersResponse"
+
+  /user-agent:
+    get:
+      operationId: getUserAgent
+      tags:
+        - Inspect
+      summary: Echo the User-Agent header
+      description: Returns the User-Agent header received with the request.
+      responses:
+        "200":
+          description: The request User-Agent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserAgentResponse"
+
+  /echo:
+    get:
+      operationId: getEcho
+      tags:
+        - Inspect
+      summary: Echo the incoming request
+      description: >
+        Returns details of the incoming request: HTTP method, path, query
+        parameters, headers, and origin IP address.
+      responses:
+        "200":
+          description: A reflection of the incoming request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EchoResponse"
 
 components:
   schemas:
@@ -189,3 +268,85 @@ components:
         go_version:
           type: string
           example: go1.24.4
+
+    UuidResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - uuid
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          description: A randomly generated version 4 UUID.
+          example: 1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed
+
+    IpResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - origin
+      properties:
+        origin:
+          type: string
+          description: The caller's origin IP address.
+          example: 203.0.113.42
+
+    HeadersResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - headers
+      properties:
+        headers:
+          $ref: "#/components/schemas/HeaderMap"
+
+    UserAgentResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - user-agent
+      properties:
+        user-agent:
+          type: string
+          example: curl/8.7.1
+
+    EchoResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - method
+        - path
+        - query
+        - headers
+        - origin
+      properties:
+        method:
+          type: string
+          example: GET
+        path:
+          type: string
+          example: /api/v1/echo
+        query:
+          $ref: "#/components/schemas/HeaderMap"
+        headers:
+          $ref: "#/components/schemas/HeaderMap"
+        origin:
+          type: string
+          description: The caller's origin IP address.
+          example: 203.0.113.42
+
+    HeaderMap:
+      type: object
+      description: >
+        A mapping of names to their list of values, used for both HTTP headers
+        and query parameters (each may appear more than once).
+      additionalProperties:
+        type: array
+        items:
+          type: string
+      example:
+        Accept:
+          - application/json
+        User-Agent:
+          - curl/8.7.1
