@@ -7,6 +7,7 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"strings"
 	"time"
@@ -18,6 +19,16 @@ import (
 const (
 	EnvDev  = "dev"
 	EnvProd = "prod"
+)
+
+// RedisMode selects the Redis client topology.
+type RedisMode string
+
+// Supported Redis topologies.
+const (
+	RedisStandalone RedisMode = "standalone"
+	RedisCluster    RedisMode = "cluster"
+	RedisSentinel   RedisMode = "sentinel"
 )
 
 type AppConfig struct {
@@ -42,7 +53,24 @@ type PostgresConfig struct {
 }
 
 type RedisConfig struct {
-	URL string `env:"URL" envDefault:"redis://localhost:6379/0" json:"url"`
+	// Mode selects the client topology: standalone, cluster, or sentinel.
+	Mode RedisMode `env:"MODE" envDefault:"standalone" json:"mode"`
+	// Addrs lists the node addresses as host:port. Standalone uses exactly one
+	// entry; cluster uses them as slot-discovery seeds; sentinel uses them as
+	// the sentinel addresses.
+	Addrs []string `env:"ADDRS" envSeparator:"," envDefault:"localhost:6379" json:"addrs"`
+	// MasterName is the monitored primary's name; required in sentinel mode.
+	MasterName string `env:"MASTER_NAME" json:"master_name"`
+	// DB is the logical database index. Standalone and sentinel only; a cluster
+	// supports only DB 0.
+	DB int `env:"DB" envDefault:"0" json:"db"`
+	// Username authenticates the connection (Redis ACL); optional.
+	Username string `env:"USERNAME" json:"username"`
+	// Password authenticates the connection. Kept out of any URL and never
+	// serialized so it cannot leak through logs or version output.
+	Password string `env:"PASSWORD" json:"-"`
+	// TLS enables an in-transit-encrypted connection.
+	TLS bool `env:"TLS" envDefault:"false" json:"tls"`
 }
 
 // Config is the resolved service configuration.
@@ -90,10 +118,9 @@ func (c Config) Validate() error {
 			return fmt.Errorf("config: postgres_url is not a valid URL: %w", err)
 		}
 	}
-	if c.Redis.URL != "" {
-		if _, err := url.Parse(c.Redis.URL); err != nil {
-			return fmt.Errorf("config: redis_url is not a valid URL: %w", err)
-		}
+
+	if err := c.Redis.Validate(); err != nil {
+		return err
 	}
 
 	if c.Http.ReadTimeout <= 0 {
@@ -115,12 +142,48 @@ func (c Config) Validate() error {
 	return nil
 }
 
+// Validate checks the Redis settings for the selected topology.
+func (r RedisConfig) Validate() error {
+	switch r.Mode {
+	case RedisStandalone, RedisCluster, RedisSentinel:
+	default:
+		return fmt.Errorf("config: invalid redis mode %q (want %q, %q or %q)",
+			r.Mode, RedisStandalone, RedisCluster, RedisSentinel)
+	}
+
+	if len(r.Addrs) == 0 {
+		return fmt.Errorf("config: redis addrs must not be empty")
+	}
+	for _, addr := range r.Addrs {
+		if _, _, err := net.SplitHostPort(addr); err != nil {
+			return fmt.Errorf("config: invalid redis addr %q: %w", addr, err)
+		}
+	}
+
+	switch r.Mode {
+	case RedisStandalone:
+		if len(r.Addrs) != 1 {
+			return fmt.Errorf("config: standalone redis requires exactly one addr, got %d", len(r.Addrs))
+		}
+	case RedisSentinel:
+		if r.MasterName == "" {
+			return fmt.Errorf("config: redis master_name is required in sentinel mode")
+		}
+	case RedisCluster:
+		if r.DB != 0 {
+			return fmt.Errorf("config: redis db must be 0 in cluster mode, got %d", r.DB)
+		}
+	}
+
+	return nil
+}
+
 // Redacted returns a copy of c with passwords stripped from URL-shaped
-// fields, suitable for logging or printing.
+// fields, suitable for logging or printing. The Redis password is never
+// serialized (json:"-"), so it needs no redaction here.
 func (c Config) Redacted() Config {
 	out := c
 	out.Postgres.URL = redactURL(c.Postgres.URL)
-	out.Redis.URL = redactURL(c.Redis.URL)
 	return out
 }
 

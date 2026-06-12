@@ -6,8 +6,9 @@
 //
 //	mise run api:test:integration
 //
-// Requires live dependencies via the loaded config (POSTGRES_URL, REDIS_URL),
-// which mise.test.toml (MISE_ENV=test) points at the test-profile instances.
+// Requires live dependencies via the loaded config (POSTGRES_URL,
+// REDIS_MODE/REDIS_ADDRS), which mise.test.toml (MISE_ENV=test) points at the
+// test-profile instances.
 
 package httpapi_test
 
@@ -43,7 +44,7 @@ func realDeps(t *testing.T) http.Handler {
 	}
 	t.Cleanup(db.Close)
 
-	rdb, err := cache.New(cfg.Redis.URL)
+	rdb, err := cache.New(cfg.Redis)
 	if err != nil {
 		t.Fatalf("cache.New: %v", err)
 	}

@@ -75,7 +75,8 @@ services:
       - run
     environment:
       POSTGRES_URL: postgres://devopsbin:devopsbin@postgres:5432/devopsbin?sslmode=disable
-      REDIS_URL: redis://redis:6379/0
+      REDIS_MODE: standalone
+      REDIS_ADDRS: redis:6379
     ports:
       - "8080:8080"
     depends_on:

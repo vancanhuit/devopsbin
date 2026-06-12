@@ -55,7 +55,7 @@ func newRunCmd() *cli.Command {
 			}
 			defer db.Close()
 
-			rdb, err := cache.New(cfg.Redis.URL)
+			rdb, err := cache.New(cfg.Redis)
 			if err != nil {
 				return err
 			}
