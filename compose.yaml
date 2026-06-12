@@ -18,6 +18,95 @@ x-redis-base: &redis-base
     timeout: 5s
     retries: 5
 
+# Shared build/run definition for every api service. Each profile's api service
+# only overrides the topology-specific environment, ports, depends_on, and
+# network.
+x-api-base: &api-base
+  build:
+    context: .
+    dockerfile: Dockerfile
+    args:
+      VERSION: ${VERSION:-dev}
+      COMMIT: ${COMMIT:-none}
+      BUILD_TIME: ${BUILD_TIME:-unknown}
+    # Persisted BuildKit layer cache so repeat builds (local and CI) reuse
+    # work. Requires a docker-container builder, which is the default driver
+    # on dev hosts and provisioned in CI.
+    cache_from:
+      - type=local,src=.cache/buildx
+    cache_to:
+      - type=local,dest=.cache/buildx,mode=max
+  command:
+    - run
+
+# A Redis Cluster node: cluster mode enabled, advertising its in-network
+# container address (reachable by the api on the same network). The cluster is
+# formed by the redis-cluster-init one-shot once every node is healthy.
+x-redis-cluster-node: &redis-cluster-node
+  image: redis:8.8.0-trixie
+  command:
+    - redis-server
+    - --cluster-enabled
+    - "yes"
+    - --cluster-node-timeout
+    - "5000"
+    - --cluster-config-file
+    - nodes.conf
+    - --appendonly
+    - "yes"
+  healthcheck:
+    test: ["CMD", "redis-cli", "ping"]
+    interval: 10s
+    timeout: 5s
+    retries: 5
+
+# A Redis replica that follows redis-master (used by the sentinel topology).
+x-redis-replica: &redis-replica
+  image: redis:8.8.0-trixie
+  command:
+    - redis-server
+    - --appendonly
+    - "yes"
+    - --replicaof
+    - redis-master
+    - "6379"
+  healthcheck:
+    test: ["CMD", "redis-cli", "ping"]
+    interval: 10s
+    timeout: 5s
+    retries: 5
+  depends_on:
+    redis-master:
+      condition: service_healthy
+
+# A Sentinel that monitors "mymaster". Hostname resolution is enabled so the
+# monitor directive (and the address returned to clients) can use the stable
+# service name redis-master rather than a volatile container IP.
+x-redis-sentinel: &redis-sentinel
+  image: redis:8.8.0-trixie
+  command:
+    - sh
+    - -c
+    - |
+      cat > /tmp/sentinel.conf <<'CONF'
+      port 26379
+      sentinel resolve-hostnames yes
+      sentinel announce-hostnames yes
+      sentinel monitor mymaster redis-master 6379 2
+      sentinel down-after-milliseconds mymaster 5000
+      sentinel failover-timeout mymaster 10000
+      sentinel parallel-syncs mymaster 1
+      CONF
+      exec redis-server /tmp/sentinel.conf --sentinel
+  healthcheck:
+    test: ["CMD", "redis-cli", "-p", "26379", "ping"]
+    interval: 10s
+    timeout: 5s
+    retries: 5
+  depends_on:
+    redis-master:
+      condition: service_healthy
+
 services:
   postgres-test:
     <<: *postgres-base
@@ -55,24 +144,9 @@ services:
       - dev
 
   api:
+    <<: *api-base
     profiles:
       - dev
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        VERSION: ${VERSION:-dev}
-        COMMIT: ${COMMIT:-none}
-        BUILD_TIME: ${BUILD_TIME:-unknown}
-      # Persisted BuildKit layer cache so repeat builds (local and CI) reuse
-      # work. Requires a docker-container builder, which is the default driver
-      # on dev hosts and provisioned in CI.
-      cache_from:
-        - type=local,src=.cache/buildx
-      cache_to:
-        - type=local,dest=.cache/buildx,mode=max
-    command:
-      - run
     environment:
       POSTGRES_URL: postgres://devopsbin:devopsbin@postgres:5432/devopsbin?sslmode=disable
       REDIS_MODE: standalone
@@ -87,6 +161,174 @@ services:
     networks:
       - dev
 
+  # --- cluster profile: api + Postgres + a 3-master/3-replica Redis Cluster ---
+  postgres-cluster:
+    <<: *postgres-base
+    profiles:
+      - cluster
+    networks:
+      - cluster
+  redis-cluster-1:
+    <<: *redis-cluster-node
+    profiles:
+      - cluster
+    networks:
+      - cluster
+  redis-cluster-2:
+    <<: *redis-cluster-node
+    profiles:
+      - cluster
+    networks:
+      - cluster
+  redis-cluster-3:
+    <<: *redis-cluster-node
+    profiles:
+      - cluster
+    networks:
+      - cluster
+  redis-cluster-4:
+    <<: *redis-cluster-node
+    profiles:
+      - cluster
+    networks:
+      - cluster
+  redis-cluster-5:
+    <<: *redis-cluster-node
+    profiles:
+      - cluster
+    networks:
+      - cluster
+  redis-cluster-6:
+    <<: *redis-cluster-node
+    profiles:
+      - cluster
+    networks:
+      - cluster
+  # One-shot that forms the cluster (3 masters + 1 replica each) once every
+  # node is healthy, then exits. The api waits for it to complete successfully.
+  redis-cluster-init:
+    image: redis:8.8.0-trixie
+    profiles:
+      - cluster
+    restart: "no"
+    command:
+      - redis-cli
+      - --cluster
+      - create
+      - redis-cluster-1:6379
+      - redis-cluster-2:6379
+      - redis-cluster-3:6379
+      - redis-cluster-4:6379
+      - redis-cluster-5:6379
+      - redis-cluster-6:6379
+      - --cluster-replicas
+      - "1"
+      - --cluster-yes
+    depends_on:
+      redis-cluster-1:
+        condition: service_healthy
+      redis-cluster-2:
+        condition: service_healthy
+      redis-cluster-3:
+        condition: service_healthy
+      redis-cluster-4:
+        condition: service_healthy
+      redis-cluster-5:
+        condition: service_healthy
+      redis-cluster-6:
+        condition: service_healthy
+    networks:
+      - cluster
+  api-cluster:
+    <<: *api-base
+    profiles:
+      - cluster
+    environment:
+      POSTGRES_URL: postgres://devopsbin:devopsbin@postgres-cluster:5432/devopsbin?sslmode=disable
+      REDIS_MODE: cluster
+      REDIS_ADDRS: redis-cluster-1:6379,redis-cluster-2:6379,redis-cluster-3:6379,redis-cluster-4:6379,redis-cluster-5:6379,redis-cluster-6:6379
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres-cluster:
+        condition: service_healthy
+      redis-cluster-init:
+        condition: service_completed_successfully
+    networks:
+      - cluster
+
+  # --- sentinel profile: api + Postgres + master/replica Redis + 3 Sentinels --
+  postgres-sentinel:
+    <<: *postgres-base
+    profiles:
+      - sentinel
+    networks:
+      - sentinel
+  redis-master:
+    <<: *redis-base
+    profiles:
+      - sentinel
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+    networks:
+      - sentinel
+  redis-replica-1:
+    <<: *redis-replica
+    profiles:
+      - sentinel
+    networks:
+      - sentinel
+  redis-replica-2:
+    <<: *redis-replica
+    profiles:
+      - sentinel
+    networks:
+      - sentinel
+  redis-sentinel-1:
+    <<: *redis-sentinel
+    profiles:
+      - sentinel
+    networks:
+      - sentinel
+  redis-sentinel-2:
+    <<: *redis-sentinel
+    profiles:
+      - sentinel
+    networks:
+      - sentinel
+  redis-sentinel-3:
+    <<: *redis-sentinel
+    profiles:
+      - sentinel
+    networks:
+      - sentinel
+  api-sentinel:
+    <<: *api-base
+    profiles:
+      - sentinel
+    environment:
+      POSTGRES_URL: postgres://devopsbin:devopsbin@postgres-sentinel:5432/devopsbin?sslmode=disable
+      REDIS_MODE: sentinel
+      REDIS_MASTER_NAME: mymaster
+      REDIS_ADDRS: redis-sentinel-1:26379,redis-sentinel-2:26379,redis-sentinel-3:26379
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres-sentinel:
+        condition: service_healthy
+      redis-sentinel-1:
+        condition: service_healthy
+      redis-sentinel-2:
+        condition: service_healthy
+      redis-sentinel-3:
+        condition: service_healthy
+    networks:
+      - sentinel
+
 networks:
   test:
   dev:
+  cluster:
+  sentinel:

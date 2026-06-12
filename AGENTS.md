@@ -33,6 +33,10 @@ mise run compose:dev:up
 mise run compose:dev:down
 mise run compose:test:up
 mise run compose:test:down
+mise run compose:cluster:up
+mise run compose:cluster:down
+mise run compose:sentinel:up
+mise run compose:sentinel:down
 
 # Release
 mise run github:release --dry-run
@@ -43,6 +47,8 @@ mise run lint:ruff
 mise run lint:yaml <file>...
 mise run lint:json <file>...
 mise run smoke:dev
+mise run smoke:cluster
+mise run smoke:sentinel
 ```
 
 ## OpenAPI
