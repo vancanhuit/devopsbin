@@ -1,5 +1,6 @@
 /* tslint:disable */
 /* eslint-disable */
+export * from './DelayResponse';
 export * from './DependencyCheck';
 export * from './EchoResponse';
 export * from './ErrorResponse';

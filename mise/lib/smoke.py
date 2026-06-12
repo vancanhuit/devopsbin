@@ -347,6 +347,31 @@ def check_status(base_url: str) -> None:
     print("[ok] status/{code} -> echoes code (418), 204 no body, 600 -> 400")
 
 
+def check_delay(base_url: str) -> None:
+    # A short delay returns 200 and echoes the delayed seconds, and the request
+    # must actually take at least that long.
+    start = time.monotonic()
+    resp = http_get(f"{base_url}{API_PREFIX}/delay/1", timeout=10.0)
+    elapsed = time.monotonic() - start
+    expect(resp.status == 200, f"delay/1: status {resp.status}, want 200")
+    body = resp.json()
+    expect(
+        isinstance(body, dict) and body.get("delay") == 1,
+        f"delay/1: body {body!r}, want delay=1",
+    )
+    expect(elapsed >= 1.0, f"delay/1: elapsed {elapsed:.2f}s, want >= 1s")
+
+    # Negative delays are rejected with a 400 and an error body.
+    bad = http_get(f"{base_url}{API_PREFIX}/delay/-1", timeout=5.0)
+    expect(bad.status == 400, f"delay/-1: status {bad.status}, want 400")
+    bad_body = bad.json()
+    expect(
+        isinstance(bad_body, dict) and bool(bad_body.get("error")),
+        f"delay/-1: body {bad_body!r}, want non-empty error",
+    )
+    print("[ok] delay/{seconds} -> waits 1s and echoes delay, -1 -> 400")
+
+
 def check_spa(base_url: str) -> None:
     resp = http_get(f"{base_url}/", timeout=5.0)
     expect(resp.status == 200, f"spa root: status {resp.status}, want 200")
@@ -412,6 +437,7 @@ def run_checks(base_url: str, timeout: float) -> None:
     check_user_agent(base_url)
     check_echo(base_url)
     check_status(base_url)
+    check_delay(base_url)
     check_spa(base_url)
     check_openapi_spec(base_url)
     check_docs_ui(base_url, "/swagger", "swagger-ui")

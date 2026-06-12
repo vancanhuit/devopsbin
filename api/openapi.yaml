@@ -15,6 +15,8 @@ tags:
     description: Request-reflection endpoints that echo back details of the incoming request.
   - name: Status
     description: Endpoints that return a caller-specified HTTP status code.
+  - name: Latency
+    description: Endpoints that introduce an artificial, bounded response delay.
 
 paths:
   /livez:
@@ -195,6 +197,42 @@ paths:
                 $ref: "#/components/schemas/StatusResponse"
         "400":
           description: The requested status code is outside the valid range.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /delay/{seconds}:
+    get:
+      operationId: getDelay
+      tags:
+        - Latency
+      summary: Delay the response by a given number of seconds
+      description: >
+        Waits for the requested number of seconds before responding. The delay
+        is capped at 10 seconds; larger values are clamped to the cap. Negative
+        values yield a 400 response. The wait respects request cancellation and
+        the server's request timeout.
+      parameters:
+        - name: seconds
+          in: path
+          required: true
+          description: The number of seconds to delay (0-10).
+          schema:
+            type: number
+            format: double
+            minimum: 0
+            maximum: 10
+            example: 1
+      responses:
+        "200":
+          description: The response after the requested delay.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DelayResponse"
+        "400":
+          description: The requested delay is negative.
           content:
             application/json:
               schema:
@@ -414,3 +452,15 @@ components:
           type: string
           description: A human-readable description of the error.
           example: status code must be in the range 100-599
+
+    DelayResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - delay
+      properties:
+        delay:
+          type: number
+          format: double
+          description: The number of seconds the response was delayed.
+          example: 1
