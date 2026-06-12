@@ -6,7 +6,14 @@
 // uniformly. Do not edit files under `./generated/` by hand; re-run the
 // generator after changing `api/openapi.yaml`.
 
-import { Configuration, ResponseError, InspectApi, RuntimeApi, type ApiResponse } from './generated'
+import {
+  Configuration,
+  ResponseError,
+  InspectApi,
+  RuntimeApi,
+  StatusApi,
+  type ApiResponse,
+} from './generated'
 import type { VersionResponse } from './generated'
 
 export type {
@@ -31,6 +38,7 @@ export interface CallResult {
 const config = new Configuration()
 const api = new RuntimeApi(config)
 const inspect = new InspectApi(config)
+const status = new StatusApi(config)
 
 // rawCalls maps each documented endpoint path to its generated raw call. The
 // *Raw variants return an ApiResponse, exposing both the typed body via
@@ -45,6 +53,7 @@ const rawCalls = {
   '/headers': () => inspect.getHeadersRaw(),
   '/user-agent': () => inspect.getUserAgentRaw(),
   '/echo': () => inspect.getEchoRaw(),
+  '/status/200': () => status.getStatusRaw({ code: 200 }),
 } satisfies Record<string, () => Promise<ApiResponse<unknown>>>
 
 // EndpointPath is the set of documented API paths the console can call.
@@ -125,6 +134,13 @@ export const endpoints: readonly Endpoint[] = [
     path: '/echo',
     title: 'Echo',
     description: 'Reflects the request method, path, query, headers, and origin IP.',
+    expectedStatuses: [200],
+  },
+  {
+    method: 'GET',
+    path: '/status/200',
+    title: 'Status',
+    description: 'Returns the HTTP status code given in the path (here, 200).',
     expectedStatuses: [200],
   },
 ]
