@@ -40,7 +40,7 @@ jobs:
           # Pin the mise CLI to match MISE_VERSION in mise.toml and the
           # Dockerfile so local, CI, and image builds resolve tasks and tools
           # identically.
-          version: 2026.6.1
+          version: 2026.6.3
           install: true
           cache: true
 
@@ -219,7 +219,7 @@ jobs:
           # Pin the mise CLI to match MISE_VERSION in mise.toml and the
           # Dockerfile so local, CI, and image builds resolve tasks and tools
           # identically.
-          version: 2026.6.1
+          version: 2026.6.3
           install: true
           cache: true
 
