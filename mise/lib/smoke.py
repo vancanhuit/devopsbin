@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import time
 import urllib.error
@@ -30,6 +31,12 @@ from dataclasses import dataclass
 
 DEFAULT_BASE_URL = "http://127.0.0.1:8080"
 API_PREFIX = "/api/v1"
+
+# RFC 4122 version 4 UUID (any variant nibble 8-b in the documented range).
+UUID_V4_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
 
 
 class SmokeError(Exception):
@@ -47,8 +54,16 @@ class Response:
         return json.loads(self.body)
 
 
-def http_get(url: str, timeout: float, *, follow_redirects: bool = True) -> Response:
+def http_get(
+    url: str,
+    timeout: float,
+    *,
+    follow_redirects: bool = True,
+    headers: dict[str, str] | None = None,
+) -> Response:
     req = urllib.request.Request(url, method="GET")
+    for name, value in (headers or {}).items():
+        req.add_header(name, value)
     opener = (
         urllib.request.build_opener()
         if follow_redirects
@@ -158,6 +173,104 @@ def check_version(base_url: str) -> None:
     print(f"[ok] version -> 200 ({body['service']} {body['version']})")
 
 
+def check_uuid(base_url: str) -> None:
+    resp = http_get(f"{base_url}{API_PREFIX}/uuid", timeout=5.0)
+    expect(resp.status == 200, f"uuid: status {resp.status}, want 200")
+    body = resp.json()
+    expect(isinstance(body, dict), f"uuid: body {body!r}, want object")
+    value = body.get("uuid")
+    expect(
+        isinstance(value, str) and UUID_V4_RE.match(value) is not None,
+        f"uuid: uuid {value!r}, want a version 4 UUID",
+    )
+    print("[ok] uuid -> 200 (version 4 UUID)")
+
+
+def check_ip(base_url: str) -> None:
+    resp = http_get(f"{base_url}{API_PREFIX}/ip", timeout=5.0)
+    expect(resp.status == 200, f"ip: status {resp.status}, want 200")
+    body = resp.json()
+    expect(isinstance(body, dict), f"ip: body {body!r}, want object")
+    origin = body.get("origin")
+    expect(
+        isinstance(origin, str) and origin != "",
+        f"ip: origin {origin!r}, want non-empty string",
+    )
+    print(f"[ok] ip -> 200 (origin {origin})")
+
+
+def check_headers(base_url: str) -> None:
+    marker = "smoke-headers-probe"
+    resp = http_get(
+        f"{base_url}{API_PREFIX}/headers",
+        timeout=5.0,
+        headers={"X-Smoke-Test": marker},
+    )
+    expect(resp.status == 200, f"headers: status {resp.status}, want 200")
+    body = resp.json()
+    expect(isinstance(body, dict), f"headers: body {body!r}, want object")
+    headers = body.get("headers")
+    expect(isinstance(headers, dict), f"headers: headers {headers!r}, want object")
+    values = headers.get("X-Smoke-Test")
+    expect(
+        isinstance(values, list) and marker in values,
+        f"headers: X-Smoke-Test {values!r}, want list containing {marker!r}",
+    )
+    print("[ok] headers -> 200 (reflects request headers)")
+
+
+def check_user_agent(base_url: str) -> None:
+    ua = "devopsbin-smoke/1.0"
+    resp = http_get(
+        f"{base_url}{API_PREFIX}/user-agent",
+        timeout=5.0,
+        headers={"User-Agent": ua},
+    )
+    expect(resp.status == 200, f"user-agent: status {resp.status}, want 200")
+    body = resp.json()
+    expect(isinstance(body, dict), f"user-agent: body {body!r}, want object")
+    expect(
+        body.get("user-agent") == ua,
+        f"user-agent: user-agent {body.get('user-agent')!r}, want {ua!r}",
+    )
+    print("[ok] user-agent -> 200 (reflects User-Agent)")
+
+
+def check_echo(base_url: str) -> None:
+    marker = "smoke-echo-probe"
+    resp = http_get(
+        f"{base_url}{API_PREFIX}/echo?foo=bar&foo=baz",
+        timeout=5.0,
+        headers={"X-Smoke-Test": marker},
+    )
+    expect(resp.status == 200, f"echo: status {resp.status}, want 200")
+    body = resp.json()
+    expect(isinstance(body, dict), f"echo: body {body!r}, want object")
+    expect(
+        body.get("method") == "GET", f"echo: method {body.get('method')!r}, want GET"
+    )
+    expect(
+        body.get("path") == f"{API_PREFIX}/echo",
+        f"echo: path {body.get('path')!r}, want {API_PREFIX + '/echo'!r}",
+    )
+    query = body.get("query")
+    expect(
+        isinstance(query, dict) and query.get("foo") == ["bar", "baz"],
+        f"echo: query {query!r}, want foo=[bar, baz]",
+    )
+    headers = body.get("headers")
+    expect(
+        isinstance(headers, dict) and marker in headers.get("X-Smoke-Test", []),
+        f"echo: headers {headers!r}, want X-Smoke-Test containing {marker!r}",
+    )
+    origin = body.get("origin")
+    expect(
+        isinstance(origin, str) and origin != "",
+        f"echo: origin {origin!r}, want non-empty string",
+    )
+    print("[ok] echo -> 200 (reflects method, path, query, headers, origin)")
+
+
 def check_spa(base_url: str) -> None:
     resp = http_get(f"{base_url}/", timeout=5.0)
     expect(resp.status == 200, f"spa root: status {resp.status}, want 200")
@@ -217,6 +330,11 @@ def run_checks(base_url: str, timeout: float) -> None:
     check_readyz(base_url)
     check_startupz(base_url)
     check_version(base_url)
+    check_uuid(base_url)
+    check_ip(base_url)
+    check_headers(base_url)
+    check_user_agent(base_url)
+    check_echo(base_url)
     check_spa(base_url)
     check_openapi_spec(base_url)
     check_docs_ui(base_url, "/swagger", "swagger-ui")

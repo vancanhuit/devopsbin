@@ -25,6 +25,9 @@ run = "go test -v -cover -race ./internal/..."
 [tasks."api:test:integration"]
 description = "Run integration tests against the test-profile Postgres and Redis."
 # Brings up the test stack first; tear it down afterwards with compose:test:down.
+env.POSTGRES_URL = "postgres://devopsbin:devopsbin@localhost:5433/devopsbin?sslmode=disable"
+env.REDIS_MODE = "standalone"
+env.REDIS_ADDRS = "localhost:6380"
 depends = ["compose:test:up"]
 depends_post = ["compose:test:down"]
 run = "go test -cover -race -v -count=1 -tags=integration ./internal/..."

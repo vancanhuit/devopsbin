@@ -17,7 +17,7 @@ mise run api:format
 mise run api:vulncheck
 mise run api:lint
 mise run api:test:unit
-mise --env test run api:test:integration
+mise run api:test:integration
 
 # App (Go server with the embedded SPA)
 mise run app:build

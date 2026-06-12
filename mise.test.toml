@@ -1,4 +1,0 @@
-[env]
-POSTGRES_URL = "postgres://devopsbin:devopsbin@localhost:5433/devopsbin?sslmode=disable"
-REDIS_MODE = "standalone"
-REDIS_ADDRS = "localhost:6380"
