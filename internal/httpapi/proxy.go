@@ -11,15 +11,20 @@ import (
 // xForwardedForHeader is the canonical X-Forwarded-For header name.
 const xForwardedForHeader = "X-Forwarded-For"
 
+// xForwardedProtoHeader is the canonical X-Forwarded-Proto header name.
+const xForwardedProtoHeader = "X-Forwarded-Proto"
+
 // trustedProxy returns middleware that derives the real client IP from the
 // X-Forwarded-For header, but only when the immediate peer (the TCP
 // RemoteAddr) falls within one of the trusted proxy prefixes. Gating on the
 // peer prevents a client connecting directly from spoofing its address with a
 // forged header.
 //
-// The resolved IP is stored in the request context and read by clientIPFrom.
-// When no prefixes are configured, or the peer is not trusted, the middleware
-// is a no-op and the peer address remains authoritative.
+// The resolved IP is stored in the request context and read by clientIPFrom;
+// the forwarded scheme (X-Forwarded-Proto) is recovered the same way and read
+// by schemeFrom. When no prefixes are configured, or the peer is not trusted,
+// the middleware is a no-op and the peer address and TLS state remain
+// authoritative.
 func trustedProxy(prefixes []netip.Prefix) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -34,11 +39,14 @@ func trustedProxy(prefixes []netip.Prefix) func(http.Handler) http.Handler {
 				return
 			}
 
+			ctx := r.Context()
 			if ip, ok := clientFromXFF(r.Header[xForwardedForHeader], prefixes); ok {
-				ctx := context.WithValue(r.Context(), clientIPCtxKey, ip)
-				r = r.WithContext(ctx)
+				ctx = context.WithValue(ctx, clientIPCtxKey, ip)
 			}
-			next.ServeHTTP(w, r)
+			if scheme, ok := forwardedProto(r.Header[xForwardedProtoHeader]); ok {
+				ctx = context.WithValue(ctx, clientSchemeCtxKey, scheme)
+			}
+			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }
@@ -123,4 +131,32 @@ func inAnyPrefix(ip netip.Addr, prefixes []netip.Prefix) bool {
 func clientIPFrom(ctx context.Context) (netip.Addr, bool) {
 	ip, ok := ctx.Value(clientIPCtxKey).(netip.Addr)
 	return ip, ok
+}
+
+// forwardedProto returns the originating scheme from the X-Forwarded-Proto
+// header set by a trusted proxy. The leftmost entry is the original client's
+// scheme; only the recognized "http"/"https" values are accepted, and an
+// unrecognized first entry fails closed so a forged value is ignored.
+func forwardedProto(headers []string) (string, bool) {
+	for _, h := range headers {
+		for _, entry := range strings.Split(h, ",") {
+			entry = strings.ToLower(strings.TrimSpace(entry))
+			if entry == "" {
+				continue
+			}
+			if entry == "http" || entry == "https" {
+				return entry, true
+			}
+			return "", false // first real entry is unrecognized
+		}
+	}
+	return "", false
+}
+
+// schemeFrom returns the trusted-proxy-resolved request scheme stored by
+// trustedProxy, or false when none was set (no trusted proxy, or untrusted
+// peer).
+func schemeFrom(ctx context.Context) (string, bool) {
+	scheme, ok := ctx.Value(clientSchemeCtxKey).(string)
+	return scheme, ok
 }

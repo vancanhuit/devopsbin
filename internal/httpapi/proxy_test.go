@@ -80,3 +80,50 @@ func TestTrustedProxy_NoPrefixesIgnoresXFF(t *testing.T) {
 		t.Errorf("origin = %q, want %q (no trusted proxies configured)", got, "203.0.113.42")
 	}
 }
+
+func schemeFor(t *testing.T, h http.Handler, remoteAddr string, xfp string) string {
+	t.Helper()
+	rec := doGetWith(t, h, "/api/v1/scheme", func(r *http.Request) {
+		r.RemoteAddr = remoteAddr
+		if xfp != "" {
+			r.Header.Set("X-Forwarded-Proto", xfp)
+		}
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	return string(decode[httpapi.SchemeResponse](t, rec).Scheme)
+}
+
+func TestTrustedProxy_HonorsForwardedProtoFromTrustedPeer(t *testing.T) {
+	h := httpapi.NewServer(
+		httpapi.WithTrustedProxies(mustPrefixes(t, "10.0.0.0/8")),
+	).Handler()
+
+	got := schemeFor(t, h, "10.1.2.3:443", "https")
+	if got != "https" {
+		t.Errorf("scheme = %q, want %q (forwarded by trusted proxy)", got, "https")
+	}
+}
+
+func TestTrustedProxy_IgnoresForwardedProtoFromUntrustedPeer(t *testing.T) {
+	h := httpapi.NewServer(
+		httpapi.WithTrustedProxies(mustPrefixes(t, "10.0.0.0/8")),
+	).Handler()
+
+	// Peer is not trusted; the spoofed X-Forwarded-Proto must be ignored and
+	// the plain-HTTP request scheme used instead.
+	got := schemeFor(t, h, "203.0.113.42:54321", "https")
+	if got != "http" {
+		t.Errorf("scheme = %q, want %q (spoofed X-Forwarded-Proto ignored)", got, "http")
+	}
+}
+
+func TestTrustedProxy_NoPrefixesIgnoresForwardedProto(t *testing.T) {
+	h := httpapi.NewServer().Handler()
+
+	got := schemeFor(t, h, "10.1.2.3:443", "https")
+	if got != "http" {
+		t.Errorf("scheme = %q, want %q (no trusted proxies configured)", got, "http")
+	}
+}

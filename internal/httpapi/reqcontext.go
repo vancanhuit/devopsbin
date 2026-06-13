@@ -11,6 +11,7 @@ type ctxKey int
 const (
 	requestCtxKey ctxKey = iota
 	clientIPCtxKey
+	clientSchemeCtxKey
 )
 
 // withRequest stores the incoming *http.Request in its context so the

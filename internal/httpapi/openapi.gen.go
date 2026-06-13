@@ -43,6 +43,24 @@ func (e DependencyCheckStatus) Valid() bool {
 	}
 }
 
+// Defines values for EchoResponseScheme.
+const (
+	EchoResponseSchemeHttp  EchoResponseScheme = "http"
+	EchoResponseSchemeHttps EchoResponseScheme = "https"
+)
+
+// Valid indicates whether the value is a known member of the EchoResponseScheme enum.
+func (e EchoResponseScheme) Valid() bool {
+	switch e {
+	case EchoResponseSchemeHttp:
+		return true
+	case EchoResponseSchemeHttps:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for LivezResponseStatus.
 const (
 	LivezResponseStatusOk LivezResponseStatus = "ok"
@@ -70,6 +88,24 @@ func (e ReadyzResponseStatus) Valid() bool {
 	case NotReady:
 		return true
 	case Ready:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SchemeResponseScheme.
+const (
+	SchemeResponseSchemeHttp  SchemeResponseScheme = "http"
+	SchemeResponseSchemeHttps SchemeResponseScheme = "https"
+)
+
+// Valid indicates whether the value is a known member of the SchemeResponseScheme enum.
+func (e SchemeResponseScheme) Valid() bool {
+	switch e {
+	case SchemeResponseSchemeHttp:
+		return true
+	case SchemeResponseSchemeHttps:
 		return true
 	default:
 		return false
@@ -121,7 +157,13 @@ type EchoResponse struct {
 
 	// Query A mapping of names to their list of values, used for both HTTP headers and query parameters (each may appear more than once).
 	Query HeaderMap `json:"query"`
+
+	// Scheme The scheme (http or https) of the incoming request.
+	Scheme EchoResponseScheme `json:"scheme"`
 }
+
+// EchoResponseScheme The scheme (http or https) of the incoming request.
+type EchoResponseScheme string
 
 // ErrorResponse defines model for ErrorResponse.
 type ErrorResponse struct {
@@ -160,6 +202,15 @@ type ReadyzResponse struct {
 
 // ReadyzResponseStatus defines model for ReadyzResponse.Status.
 type ReadyzResponseStatus string
+
+// SchemeResponse defines model for SchemeResponse.
+type SchemeResponse struct {
+	// Scheme The scheme (http or https) of the incoming request.
+	Scheme SchemeResponseScheme `json:"scheme"`
+}
+
+// SchemeResponseScheme The scheme (http or https) of the incoming request.
+type SchemeResponseScheme string
 
 // StartupzResponse defines model for StartupzResponse.
 type StartupzResponse struct {
@@ -219,6 +270,9 @@ type ServerInterface interface {
 	// Readiness probe
 	// (GET /readyz)
 	GetReadyz(w http.ResponseWriter, r *http.Request)
+	// Return the request scheme
+	// (GET /scheme)
+	GetScheme(w http.ResponseWriter, r *http.Request)
 	// Startup probe
 	// (GET /startupz)
 	GetStartupz(w http.ResponseWriter, r *http.Request)
@@ -273,6 +327,12 @@ func (_ Unimplemented) GetLivez(w http.ResponseWriter, r *http.Request) {
 // Readiness probe
 // (GET /readyz)
 func (_ Unimplemented) GetReadyz(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Return the request scheme
+// (GET /scheme)
+func (_ Unimplemented) GetScheme(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -402,6 +462,20 @@ func (siw *ServerInterfaceWrapper) GetReadyz(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetReadyz(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetScheme operation middleware
+func (siw *ServerInterfaceWrapper) GetScheme(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetScheme(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -625,6 +699,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/readyz", wrapper.GetReadyz)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/scheme", wrapper.GetScheme)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/startupz", wrapper.GetStartupz)
 	})
 	r.Group(func(r chi.Router) {
@@ -798,6 +875,27 @@ func (response GetReadyz503JSONResponse) VisitGetReadyzResponse(w http.ResponseW
 	return err
 }
 
+type GetSchemeRequestObject struct {
+}
+
+type GetSchemeResponseObject interface {
+	VisitGetSchemeResponse(w http.ResponseWriter) error
+}
+
+type GetScheme200JSONResponse SchemeResponse
+
+func (response GetScheme200JSONResponse) VisitGetSchemeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetStartupzRequestObject struct {
 }
 
@@ -955,6 +1053,9 @@ type StrictServerInterface interface {
 	// Readiness probe
 	// (GET /readyz)
 	GetReadyz(ctx context.Context, request GetReadyzRequestObject) (GetReadyzResponseObject, error)
+	// Return the request scheme
+	// (GET /scheme)
+	GetScheme(ctx context.Context, request GetSchemeRequestObject) (GetSchemeResponseObject, error)
 	// Startup probe
 	// (GET /startupz)
 	GetStartupz(ctx context.Context, request GetStartupzRequestObject) (GetStartupzResponseObject, error)
@@ -1147,6 +1248,30 @@ func (sh *strictHandler) GetReadyz(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// GetScheme operation middleware
+func (sh *strictHandler) GetScheme(w http.ResponseWriter, r *http.Request) {
+	var request GetSchemeRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetScheme(ctx, request.(GetSchemeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetScheme")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetSchemeResponseObject); ok {
+		if err := validResponse.VisitGetSchemeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetStartupz operation middleware
 func (sh *strictHandler) GetStartupz(w http.ResponseWriter, r *http.Request) {
 	var request GetStartupzRequestObject
@@ -1274,43 +1399,46 @@ func (sh *strictHandler) GetVersion(w http.ResponseWriter, r *http.Request) {
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"zFptb+M2Ev4rhO6A2wKyLSfZXuN+Sm8X3eC2t7l96QHXCxYjcSyxK5EqSXnrBvnvh6EoWy90nM0l1wL7",
-	"wZEpcuaZ4cw8j/cmylRVK4nSmmh1E5mswArcxxdYwvYtmlpJg/QAOBdWKAnllVY1aivQRKs1lAbjqO49",
-	"uok4vdt+MJkWNb0WraL3BTLZVClqptbMYKYkN8wWyLQ/h30Gw9zbyOdRHOGvUNUlRqtlHK2VrsBGq4ir",
-	"Ji0xiiO7rTFaRe2W0e1tHGn8pREaebT6yRtxvVum0p8xs9FtHL3AGiVHmW3/VmD26Qudq9AYyB0kO/Mi",
-	"vtuSCcMKhNIW272JxmohczrbWLCN2wdlU5Gd6hM5qrXSURyZT6KukZPZ+83ditFOI2f9tiFvX2aFemAc",
-	"CwSO2n38s8Z1tIr+tNgnzMJny+KVW/YD1HRchbZQfIjO9y/fh7BQWuRChvMkg7JE/RfD2kXs8ooB5xqN",
-	"GeRFdJKczpP5cnk6PzsJnVGDLYbGLKAWi81ygVmhQm/80qDefoHLo0h4//3J3XbxDsud28FYURo8MFht",
-	"Ck3AvGBFU4GcaQQOaYms9zVdQ7p+7tUhrm1CsUxxZFVjLEuRCdleVpA5smWSzJ6fnx/NzNaskLN7DA86",
-	"ehMJi5X7MImTfwBaw5b+HrtdQV0LmZOPEio0zCoyX2hWCmPp8QbKBk3MGoOcrZVmqbIFe/X+/RXz0WIg",
-	"OXMRZDVoqNDSw2cIWcEq2DKoawTNKqWR2QIkUzLDr+b/kX0sb6KLLMPaEhpQ16XIgIxc/GyUy4IPBvXs",
-	"IkfpVmSNLhffzP86X0bXtwdRM/+3Gz0KZ7dBKKCX9QOtevpCMPLijiv4Wmzwtwf6ESzuj1jK3yLw7UON",
-	"y6jXmbvu2l0ZMe6Zt4MEr0SuXVIPYCBvqQQrY3ONoa80cjF9Hkr7KbRU0KiwSmU/tp8HSHdf3wvsuEMn",
-	"hPo7C9o29R8R90zJtcgDwN4RkPuha8hppD7mPhF216P+4L9/FIBt89CKRh0qXDlcIe/3MY220XI0WZ4k",
-	"SW+2FNKe9sqHkBZzmi1H7SVcqKSSIoOSaQSjJKsLDQZdY6G22bMkZmLNPkn1WQ5r2Ju/H8XTuRsCkbqI",
-	"ayIPxLGhLgRtF+qPS71+dMy23hZBCxvBH2pcI3hotNEguarKLctRogaLnG1QGxptztiHD5cvhvgu03P+",
-	"dZrxWZqu+ewsPeGz8/Q5n0H6DV+nKT9LXUbvssEde9RrWhTy98fWkge6nDai5B+tqEZM4yQ5+XqW0L/3",
-	"y2SV0L9/923mYHHmXgvMtrmwH00Bwx0hzZYnp8Hl6qOHc/hGrpbzk7P5WZDgoN6IbEKPNqo2qZAzqEXo",
-	"reAxyXw5T45XGH/gfpO9n3EfxoE/04DRvkKu1TTPfhBSVFCyNzXKi6tL1tY+zUyNmbveL3DzpjbfCcl0",
-	"I+kshpLXSkjrhhQrrPNnv+zi6rJnb+cpUaIaJUG0imiaOfU0wiXEwhHaxY3nzbf0LEc7NfdfIKzZlR2C",
-	"Cg3djCn1TnFNk2vLvrmQ+ZxRJXMHEY/NaL7lDCxbJt1L37ISdI7aT88MNLKshIoWthM2vTZn/8AcrNhg",
-	"t24rsOQM2FmS7Oh+e9xnENY9wsyazl4qpxmWpWtibgx3NRT1xg2D3SoCWzW2nbjp+rj1l5xIJ1qnYTgM",
-	"u9k9Wv10T1VCeRieJbNl8hWFkSbUjtURo6CUbFdH/Yy0usHYKymDfA5qGBX8KipqucuEurZs/0im4sY1",
-	"ndHC5tLhJEn8BGB9zZ5wi52gc3zI6Gs97iZMMdppNLCm5B/mlsNqThl89oh2DenwQbsGRlDeSp97c1cs",
-	"TFNVQJS+1bSGglO6ZcBysUE5TQK6upBTzkSvwdIMFl3Thq10cOj6vXVThmEcLYjSdBxbyExVxEe9vat2",
-	"PmnlgphRXsUTqhl3RDR2V2BKgcJ5/7KVNp4sXwaSUiAsF0zjusSsrzGM/R/HhvYMLuxF4VK6IuGj0OOy",
-	"dwbCdrNgR+o1Zig2yNlnYYt+Is9DYL7aCTdPhueY09+d6Z0fBxEcrTsIoKjvhd0k6w6HNADfZf2UyPUk",
-	"hwOg3aUfDPFrffYdzL+0X30QxVJs8LeDQF5plaExMyXLLaOlkgB0ZGjOXigmlW3/YlctTX73z9dMafaW",
-	"mDErUGMQVadSPCWwQxkkgK13jMotlIFa+7rztdYqxR56b9sRyaPnaPph+BzpNexzgbbwTafnEx3uNqB2",
-	"7W81sxrWa5EFYWsFlKfEbSTRhIpjwH7XOZ8np7+fGZSHnSmjWwFc3COQxqsk9w1lP4z+XVYA8WOalmzL",
-	"0icB7LSYpwzhRO85gl5nvdgb/+jx/B9sMlaUJROS4peH6p7f+3h8bWMWN5nieHtH33BUwuxb60SFqbXa",
-	"CI68+zmBJp+WCAx+bAAiDoJP3w/9CvEtA7llyiWW4xst3TBjvhEel951GtVRnjAxxtUd1zaeeVMOUQUn",
-	"3NyLJ4QVqR1ReH5+3mMKyySZqlUTsvA7DuWD0BmmGmsEAVegD7AL5LyV2NbQlPYxL01fVzxgakAm7GxP",
-	"t71p4MC40LGH8Ta9i+Tzq71HQ53t6PC1/3HIj3NfOL3uZMGnrJhT7fHIBLv36uAQO3H84ADWiYN3Ygn3",
-	"0wqn+LUS4NNB1xdFw1TK2e0s3JyN4fre+7Lzz607CFVPZvNoTRz+cSeiPZnPY2E04LZfQvQYOFgY+/1d",
-	"I0ruOPFmtDLcwLwwGa7sF1eXbLNkKZi2G0Vx1Ohy/18FIqqnftNJfrVnxP7/fLRNtGXrTnrc2TWUBH1T",
-	"6Cy8jad5627KrEekdxswW4BlSDclhezTMaWhd16XDdPzXg43111xa2vfjF4Ta4HTftzb3de5o5sLabXi",
-	"TYYMJANtxVpkAsqYpaqRNBns1BkvK+1O6GSY2+vb/wYAAP//",
+	"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",
+	"rBxBphpJlcFamwui4nqHVoS7v77/TwAAAP//",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

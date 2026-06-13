@@ -1,32 +1,22 @@
 
-# EchoResponse
+# SchemeResponse
 
 
 ## Properties
 
 Name | Type
 ------------ | -------------
-`method` | string
-`path` | string
-`query` | { [key: string]: Array&lt;string&gt;; }
-`headers` | { [key: string]: Array&lt;string&gt;; }
-`origin` | string
 `scheme` | string
 
 ## Example
 
 ```typescript
-import type { EchoResponse } from ''
+import type { SchemeResponse } from ''
 
 // TODO: Update the object below with actual values
 const example = {
-  "method": GET,
-  "path": /api/v1/echo,
-  "query": {"Accept":["application/json"],"User-Agent":["curl/8.7.1"]},
-  "headers": {"Accept":["application/json"],"User-Agent":["curl/8.7.1"]},
-  "origin": 203.0.113.42,
   "scheme": https,
-} satisfies EchoResponse
+} satisfies SchemeResponse
 
 console.log(example)
 
@@ -35,7 +25,7 @@ const exampleJSON: string = JSON.stringify(example)
 console.log(exampleJSON)
 
 // Parse the JSON string back to an object
-const exampleParsed = JSON.parse(exampleJSON) as EchoResponse
+const exampleParsed = JSON.parse(exampleJSON) as SchemeResponse
 console.log(exampleParsed)
 ```
 

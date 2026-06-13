@@ -7,6 +7,7 @@ All URIs are relative to */api/v1*
 | [**getEcho**](InspectApi.md#getecho) | **GET** /echo | Echo the incoming request |
 | [**getHeaders**](InspectApi.md#getheaders) | **GET** /headers | Echo the request headers |
 | [**getIp**](InspectApi.md#getip) | **GET** /ip | Return the caller\&#39;s IP address |
+| [**getScheme**](InspectApi.md#getscheme) | **GET** /scheme | Return the request scheme |
 | [**getUserAgent**](InspectApi.md#getuseragent) | **GET** /user-agent | Echo the User-Agent header |
 | [**getUuid**](InspectApi.md#getuuid) | **GET** /uuid | Generate a random UUID |
 
@@ -185,6 +186,65 @@ No authorization required
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 | **200** | The caller\&#39;s origin IP address. |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## getScheme
+
+> SchemeResponse getScheme()
+
+Return the request scheme
+
+Returns the scheme (http or https) of the incoming request. When the request arrives through a trusted proxy, the scheme is taken from the X-Forwarded-Proto header; otherwise it reflects whether this server terminated TLS for the connection. 
+
+### Example
+
+```ts
+import {
+  Configuration,
+  InspectApi,
+} from '';
+import type { GetSchemeRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new InspectApi();
+
+  try {
+    const data = await api.getScheme();
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+This endpoint does not need any parameter.
+
+### Return type
+
+[**SchemeResponse**](SchemeResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | The request scheme. |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
