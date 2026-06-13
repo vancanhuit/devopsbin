@@ -17,6 +17,9 @@
     // /echo). When set, the card shows a method picker; the body input appears
     // for methods that carry a request body.
     methods?: string[]
+    // Whether the endpoint accepts a free-form query string (e.g. /echo). When
+    // true, the card shows a query input that is appended to the request URL.
+    supportsQuery?: boolean
   }
 
   let {
@@ -27,6 +30,7 @@
     expectedStatuses = [200],
     params = [],
     methods,
+    supportsQuery = false,
   }: Props = $props()
 
   let loading = $state(false)
@@ -39,6 +43,10 @@
   // body holds the request body for methods that carry one. It is sent only
   // when the selected method accepts a body (see bodyAllowed).
   let body = $state('')
+
+  // query holds the raw query string (e.g. "foo=bar&foo=baz") appended to the
+  // request URL for endpoints that reflect query parameters.
+  let queryString = $state('')
 
   // bodyAllowed is true when the selected method carries a request body, which
   // gates the body textarea and what is forwarded to the call.
@@ -57,9 +65,15 @@
 
   // displayPath substitutes the current input values into the path template so
   // the user sees the concrete URL they are about to call (e.g. /status/404).
-  const displayPath = $derived(
-    params.reduce((acc, p) => acc.replace(`{${p.name}}`, values[p.name] || `{${p.name}}`), path)
-  )
+  // A non-empty query string is appended so the reflected URL is visible too.
+  const displayPath = $derived.by(() => {
+    const resolved = params.reduce(
+      (acc, p) => acc.replace(`{${p.name}}`, values[p.name] || `{${p.name}}`),
+      path
+    )
+    const trimmed = queryString.replace(/^\?/, '')
+    return supportsQuery && trimmed ? `${resolved}?${trimmed}` : resolved
+  })
 
   async function trigger() {
     loading = true
@@ -67,6 +81,7 @@
       result = await call(path, values, {
         method: selectedMethod,
         body: bodyAllowed ? body : undefined,
+        query: supportsQuery ? queryString : undefined,
       })
     } finally {
       loading = false
@@ -140,6 +155,19 @@
         </label>
       {/if}
     </div>
+  {/if}
+
+  {#if supportsQuery}
+    <label class="flex flex-col gap-1 text-xs">
+      <span class="font-medium text-slate-400">Query</span>
+      <input
+        type="text"
+        bind:value={queryString}
+        disabled={loading}
+        placeholder="foo=bar&amp;foo=baz"
+        class="w-full rounded-lg border border-slate-700 bg-slate-950/80 px-2.5 py-1.5 font-mono text-sm text-slate-200 focus:border-sky-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 disabled:opacity-50"
+      />
+    </label>
   {/if}
 
   {#if params.length > 0}

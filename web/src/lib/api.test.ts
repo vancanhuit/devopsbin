@@ -109,4 +109,20 @@ describe('call', () => {
     const init = fetchMock.mock.calls[0][1] as RequestInit
     expect(init.method).toBe('GET')
   })
+
+  it('appends the query string to the /echo request URL', async () => {
+    const fetchMock = stubFetch(
+      async () =>
+        new Response(JSON.stringify({ method: 'GET' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+    )
+
+    await call('/echo', {}, { query: 'foo=bar&foo=baz' })
+
+    expect(fetchMock).toHaveBeenCalledOnce()
+    const url = String(fetchMock.mock.calls[0][0])
+    expect(url).toContain('/echo?foo=bar&foo=baz')
+  })
 })

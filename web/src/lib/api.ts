@@ -10,6 +10,7 @@ import {
   Configuration,
   ResponseError,
   InspectApi,
+  JSONApiResponse,
   LatencyApi,
   RuntimeApi,
   StatusApi,
@@ -40,11 +41,14 @@ export interface CallResult {
 export type CallArgs = Record<string, string>
 
 // CallOptions holds per-invocation choices that are not path parameters, such
-// as the HTTP method and request body for endpoints (like /echo) that accept
-// more than one method. Endpoints that support a single method ignore it.
+// as the HTTP method, request body, and raw query string for endpoints (like
+// /echo) that accept them. Endpoints that ignore these leave them undefined.
 export interface CallOptions {
   method?: string
   body?: string
+  // query is a raw query string (e.g. "foo=bar&foo=baz"), with or without a
+  // leading "?". It is appended verbatim so callers can send repeated keys.
+  query?: string
 }
 
 // api targets the /api/v1 base path baked into the generated client; in
@@ -55,22 +59,23 @@ const inspect = new InspectApi(config)
 const status = new StatusApi(config)
 const latency = new LatencyApi(config)
 
-// echoRaw dispatches the /echo call to the generated method matching the
-// selected HTTP method, forwarding the optional request body for the methods
-// that carry one. Unknown methods fall back to GET.
+// echoRaw issues the /echo request for the selected HTTP method, forwarding an
+// optional request body (for body-carrying methods) and an optional raw query
+// string. The echo endpoint reflects arbitrary query parameters, which the
+// generated client cannot express, so the request is built directly against the
+// same base path the generated client uses.
 function echoRaw(opts: CallOptions): Promise<ApiResponse<unknown>> {
-  switch (opts.method) {
-    case 'POST':
-      return inspect.postEchoRaw({ body: opts.body })
-    case 'PUT':
-      return inspect.putEchoRaw({ body: opts.body })
-    case 'PATCH':
-      return inspect.patchEchoRaw({ body: opts.body })
-    case 'DELETE':
-      return inspect.deleteEchoRaw({ body: opts.body })
-    default:
-      return inspect.getEchoRaw()
+  const method = opts.method ?? 'GET'
+  const query = (opts.query ?? '').replace(/^\?/, '')
+  const url = `${config.basePath}/echo${query ? `?${query}` : ''}`
+
+  const init: RequestInit = { method }
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) && opts.body != null) {
+    init.headers = { 'Content-Type': 'text/plain' }
+    init.body = opts.body
   }
+
+  return fetch(url, init).then((res) => new JSONApiResponse(res))
 }
 
 // rawCalls maps each documented endpoint path to its generated raw call. The
@@ -130,6 +135,9 @@ export interface Endpoint {
   // available (e.g. /echo). Omitted for single-method endpoints, which use
   // `method`.
   methods?: string[]
+  // supportsQuery enables a free-form query-string input for endpoints (e.g.
+  // /echo) that reflect arbitrary query parameters.
+  supportsQuery?: boolean
 }
 
 export const endpoints: readonly Endpoint[] = [
@@ -201,8 +209,9 @@ export const endpoints: readonly Endpoint[] = [
     path: '/echo',
     title: 'Echo',
     description: 'Reflects the request method, path, query, headers, origin IP, scheme, and body.',
-    expectedStatuses: [200],
+    expectedStatuses: [200, 413],
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+    supportsQuery: true,
   },
   {
     method: 'GET',
