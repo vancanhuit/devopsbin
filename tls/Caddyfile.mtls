@@ -18,13 +18,13 @@
 
 	# Re-encrypt to the backend over HTTPS. The api-mtls upstream requires a
 	# client certificate, so present one (tls_client_auth) and verify the
-	# upstream's server certificate against the mkcert CA (tls_trusted_ca_certs).
+	# upstream's server certificate against the mkcert CA (tls_trust_pool file).
 	# The backend leaf carries the api-mtls SAN, so hostname verification passes.
 	reverse_proxy https://api-mtls:8443 {
 		transport http {
 			tls
 			tls_client_auth /certs/devopsbin-client.pem /certs/devopsbin-client-key.pem
-			tls_trusted_ca_certs /certs/rootCA.pem
+			tls_trust_pool file /certs/rootCA.pem
 		}
 	}
 }
