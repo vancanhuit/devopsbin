@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -24,6 +25,8 @@ var envKeys = []string{
 	"HTTP_IDLE_TIMEOUT",
 	"HTTP_SHUTDOWN_TIMEOUT",
 	"HTTP_REQUEST_TIMEOUT",
+	"HTTP_TLS_CERT_FILE",
+	"HTTP_TLS_KEY_FILE",
 	"POSTGRES_URL",
 	"REDIS_MODE",
 	"REDIS_ADDRS",
@@ -229,6 +232,77 @@ func TestValidate(t *testing.T) {
 			}
 			if !tc.wantErr && err != nil {
 				t.Errorf("Validate() = %v, want nil", err)
+			}
+		})
+	}
+}
+
+func TestValidate_TLS(t *testing.T) {
+	dir := t.TempDir()
+	cert := filepath.Join(dir, "cert.pem")
+	key := filepath.Join(dir, "key.pem")
+	for _, f := range []string{cert, key} {
+		if err := os.WriteFile(f, []byte("pem"), 0o600); err != nil {
+			t.Fatalf("write %s: %v", f, err)
+		}
+	}
+	missing := filepath.Join(dir, "absent.pem")
+
+	base := func() config.Config {
+		return config.Config{
+			App:   config.AppConfig{Environment: config.EnvProd, LogLevel: "info"},
+			Http:  config.HttpConfig{Addr: ":8080", ReadTimeout: time.Second, WriteTimeout: time.Second, IdleTimeout: time.Second, ShutdownTimeout: time.Second, RequestTimeout: time.Second},
+			Redis: config.RedisConfig{Mode: config.RedisStandalone, Addrs: []string{"localhost:6379"}},
+		}
+	}
+
+	tests := []struct {
+		name    string
+		cert    string
+		key     string
+		wantErr bool
+	}{
+		{"neither set", "", "", false},
+		{"both set and readable", cert, key, false},
+		{"cert without key", cert, "", true},
+		{"key without cert", "", key, true},
+		{"cert file missing", missing, key, true},
+		{"key file missing", cert, missing, true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			c := base()
+			c.Http.TLSCertFile = tc.cert
+			c.Http.TLSKeyFile = tc.key
+			err := c.Validate()
+			if tc.wantErr && err == nil {
+				t.Errorf("Validate() = nil, want error")
+			}
+			if !tc.wantErr && err != nil {
+				t.Errorf("Validate() = %v, want nil", err)
+			}
+		})
+	}
+}
+
+func TestHttpConfig_TLSEnabled(t *testing.T) {
+	tests := []struct {
+		name string
+		cert string
+		key  string
+		want bool
+	}{
+		{"neither", "", "", false},
+		{"both", "cert.pem", "key.pem", true},
+		{"cert only", "cert.pem", "", false},
+		{"key only", "", "key.pem", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			h := config.HttpConfig{TLSCertFile: tc.cert, TLSKeyFile: tc.key}
+			if got := h.TLSEnabled(); got != tc.want {
+				t.Errorf("TLSEnabled() = %v, want %v", got, tc.want)
 			}
 		})
 	}

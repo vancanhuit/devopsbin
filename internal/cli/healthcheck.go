@@ -2,8 +2,11 @@ package cli
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/urfave/cli/v3"
@@ -30,10 +33,20 @@ func newHealthcheckCmd() *cli.Command {
 				Value: 2 * time.Second,
 				Usage: "request timeout",
 			},
+			&cli.StringFlag{
+				Name: "cacert",
+				Usage: "path to a PEM CA bundle used to verify the server " +
+					"certificate when probing an https URL",
+			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			url := cmd.String("url")
 			timeout := cmd.Duration("timeout")
+
+			client, err := healthcheckClient(cmd.String("cacert"), timeout)
+			if err != nil {
+				return err
+			}
 
 			ctx, cancel := context.WithTimeout(ctx, timeout)
 			defer cancel()
@@ -43,7 +56,7 @@ func newHealthcheckCmd() *cli.Command {
 				return err
 			}
 
-			resp, err := http.DefaultClient.Do(req)
+			resp, err := client.Do(req)
 			if err != nil {
 				return err
 			}
@@ -55,4 +68,34 @@ func newHealthcheckCmd() *cli.Command {
 			return nil
 		},
 	}
+}
+
+// healthcheckClient builds the HTTP client used by the probe. When caCertFile
+// is set, the server certificate is verified against that PEM bundle (mirroring
+// production behaviour with a private CA) instead of the system trust store.
+// An empty caCertFile yields a default client suitable for plain HTTP.
+func healthcheckClient(caCertFile string, timeout time.Duration) (*http.Client, error) {
+	if caCertFile == "" {
+		return &http.Client{Timeout: timeout}, nil
+	}
+
+	pem, err := os.ReadFile(caCertFile)
+	if err != nil {
+		return nil, fmt.Errorf("healthcheck: read cacert: %w", err)
+	}
+
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(pem) {
+		return nil, fmt.Errorf("healthcheck: no certificates found in %q", caCertFile)
+	}
+
+	return &http.Client{
+		Timeout: timeout,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				MinVersion: tls.VersionTLS12,
+				RootCAs:    pool,
+			},
+		},
+	}, nil
 }
