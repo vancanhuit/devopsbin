@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# [MISE] description="Install the mkcert dev CA into the system/browser trust store and issue trusted tls/dev certs."
+# [MISE] tools={mkcert="1.4.4"}
+#
+# Convenience for running the local TLS stack in a browser without certificate
+# warnings. Unlike `certs:dev` (which uses a throwaway CA), this:
+#
+#   1. runs `mkcert -install` to add the local mkcert CA to the system trust
+#      store (and Firefox/Java stores when present) -- this may prompt for sudo;
+#   2. issues a leaf into tls/dev signed by that now-trusted CA;
+#   3. copies the CA to tls/dev/rootCA.pem so --cacert verification still works.
+#
+# After this, https://localhost:8443 and https://localhost:9443 are trusted by
+# your browser. Because `compose:tls:up` -> `certs:dev` is idempotent, these
+# trusted certs survive bringing the stack up. To undo the trust later, run
+# `mkcert -uninstall`.
+
+set -euo pipefail
+IFS=$'\n\t'
+
+certs_dir="${MISE_PROJECT_ROOT:?}/tls/dev"
+mkdir -p "$certs_dir"
+
+# Install the local CA into the system (and browser) trust stores. Idempotent;
+# creates the CA at the default CAROOT on first run. May require sudo.
+echo "Installing the mkcert local CA into the system trust store ..."
+mkcert -install
+
+# Issue a leaf signed by the installed CA, overwriting any ephemeral certs so
+# tls/dev becomes browser-trusted.
+echo "Issuing browser-trusted leaf certificate -> ${certs_dir}/devopsbin.pem"
+mkcert \
+    -cert-file "${certs_dir}/devopsbin.pem" \
+    -key-file "${certs_dir}/devopsbin-key.pem" \
+    localhost 127.0.0.1 ::1
+
+caroot="$(mkcert -CAROOT)"
+echo "Copying CA -> ${certs_dir}/rootCA.pem (from ${caroot}/rootCA.pem)"
+cp "${caroot}/rootCA.pem" "${certs_dir}/rootCA.pem"
+
+echo "Done. tls/dev now contains browser-trusted certificates:"
+ls -1 "${certs_dir}"/*.pem

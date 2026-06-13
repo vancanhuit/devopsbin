@@ -1,0 +1,21 @@
+# Caddy reverse proxy for the `tls` Compose profile. Terminates TLS with the
+# mkcert-issued dev certificate and forwards to the plain-HTTP api-tls-proxied
+# service, exercising the binary's trusted-proxy handling end to end.
+{
+	# No admin API (we don't drive Caddy at runtime) and no ACME: this stack is
+	# entirely offline with a locally mounted certificate.
+	admin off
+	auto_https off
+}
+
+# Serve HTTPS on :443 (published as 9443 on the host) using the mounted dev
+# certificate. A bare :443 site matches any Host, so https://localhost:9443
+# works without pinning a hostname here.
+:443 {
+	tls /certs/devopsbin.pem /certs/devopsbin-key.pem
+
+	# reverse_proxy sets X-Forwarded-For / X-Forwarded-Proto / X-Forwarded-Host
+	# so the upstream can recover the original client and scheme. api-tls-proxied
+	# is configured to trust this proxy's network, so it honors those headers.
+	reverse_proxy api-tls-proxied:8080
+}
