@@ -1,0 +1,30 @@
+# Caddy reverse proxy for the `mtls` Compose profile. Terminates the browser-
+# facing TLS with the mkcert-issued dev certificate and re-encrypts to the
+# backend over mutual TLS: it presents a client certificate and verifies the
+# upstream's server certificate against the same mkcert CA. This exercises the
+# binary's RequireAndVerifyClientCert path end to end.
+{
+	# No admin API (we don't drive Caddy at runtime) and no ACME: this stack is
+	# entirely offline with a locally mounted certificate.
+	admin off
+	auto_https off
+}
+
+# Serve HTTPS on :443 (published as 9444 on the host) using the mounted dev
+# certificate. A bare :443 site matches any Host, so https://localhost:9444
+# works without pinning a hostname here.
+:443 {
+	tls /certs/devopsbin.pem /certs/devopsbin-key.pem
+
+	# Re-encrypt to the backend over HTTPS. The api-mtls upstream requires a
+	# client certificate, so present one (tls_client_auth) and verify the
+	# upstream's server certificate against the mkcert CA (tls_trust_pool file).
+	# The backend leaf carries the api-mtls SAN, so hostname verification passes.
+	reverse_proxy https://api-mtls:8443 {
+		transport http {
+			tls
+			tls_client_auth /certs/devopsbin-client.pem /certs/devopsbin-client-key.pem
+			tls_trust_pool file /certs/rootCA.pem
+		}
+	}
+}

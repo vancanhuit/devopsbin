@@ -119,11 +119,23 @@ func newRunCmd() *cli.Command {
 				TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12},
 			}
 
+			// When mutual TLS is configured, require every client to present a
+			// certificate signed by the configured CA bundle. This is ignored
+			// for plain-HTTP serving (MTLSEnabled implies direct HTTPS).
+			if cfg.Http.MTLSEnabled() {
+				pool, err := cfg.Http.ClientCAPool()
+				if err != nil {
+					return err
+				}
+				srv.TLSConfig.ClientCAs = pool
+				srv.TLSConfig.ClientAuth = tls.RequireAndVerifyClientCert
+			}
+
 			scheme := "http"
 			if cfg.Http.TLSEnabled() {
 				scheme = "https"
 			}
-			logger.Info("serving", "scheme", scheme, "addr", cfg.Http.Addr)
+			logger.Info("serving", "scheme", scheme, "mtls", cfg.Http.MTLSEnabled(), "addr", cfg.Http.Addr)
 
 			serveErr := make(chan error, 1)
 			go func() {

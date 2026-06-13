@@ -38,12 +38,22 @@ func newHealthcheckCmd() *cli.Command {
 				Usage: "path to a PEM CA bundle used to verify the server " +
 					"certificate when probing an https URL",
 			},
+			&cli.StringFlag{
+				Name: "cert",
+				Usage: "path to a PEM client certificate to present for " +
+					"mutual TLS (requires --key)",
+			},
+			&cli.StringFlag{
+				Name: "key",
+				Usage: "path to the PEM private key for --cert " +
+					"(requires --cert)",
+			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			url := cmd.String("url")
 			timeout := cmd.Duration("timeout")
 
-			client, err := healthcheckClient(cmd.String("cacert"), timeout)
+			client, err := healthcheckClient(cmd.String("cacert"), cmd.String("cert"), cmd.String("key"), timeout)
 			if err != nil {
 				return err
 			}
@@ -73,29 +83,46 @@ func newHealthcheckCmd() *cli.Command {
 // healthcheckClient builds the HTTP client used by the probe. When caCertFile
 // is set, the server certificate is verified against that PEM bundle (mirroring
 // production behaviour with a private CA) instead of the system trust store.
-// An empty caCertFile yields a default client suitable for plain HTTP.
-func healthcheckClient(caCertFile string, timeout time.Duration) (*http.Client, error) {
-	if caCertFile == "" {
+// When certFile and keyFile are both set, the client presents that certificate
+// for mutual TLS. An empty caCertFile and cert pair yields a default client
+// suitable for plain HTTP.
+func healthcheckClient(caCertFile, certFile, keyFile string, timeout time.Duration) (*http.Client, error) {
+	if certFile == "" && keyFile == "" && caCertFile == "" {
 		return &http.Client{Timeout: timeout}, nil
 	}
 
-	pem, err := os.ReadFile(caCertFile)
-	if err != nil {
-		return nil, fmt.Errorf("healthcheck: read cacert: %w", err)
+	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
+
+	if caCertFile != "" {
+		pem, err := os.ReadFile(caCertFile)
+		if err != nil {
+			return nil, fmt.Errorf("healthcheck: read cacert: %w", err)
+		}
+
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(pem) {
+			return nil, fmt.Errorf("healthcheck: no certificates found in %q", caCertFile)
+		}
+		tlsConfig.RootCAs = pool
 	}
 
-	pool := x509.NewCertPool()
-	if !pool.AppendCertsFromPEM(pem) {
-		return nil, fmt.Errorf("healthcheck: no certificates found in %q", caCertFile)
+	switch {
+	case certFile != "" && keyFile == "":
+		return nil, fmt.Errorf("healthcheck: --cert requires --key")
+	case certFile == "" && keyFile != "":
+		return nil, fmt.Errorf("healthcheck: --key requires --cert")
+	case certFile != "" && keyFile != "":
+		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+		if err != nil {
+			return nil, fmt.Errorf("healthcheck: load client certificate: %w", err)
+		}
+		tlsConfig.Certificates = []tls.Certificate{cert}
 	}
 
 	return &http.Client{
 		Timeout: timeout,
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				MinVersion: tls.VersionTLS12,
-				RootCAs:    pool,
-			},
+			TLSClientConfig: tlsConfig,
 		},
 	}, nil
 }

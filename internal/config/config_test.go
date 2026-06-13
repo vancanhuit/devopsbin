@@ -1,6 +1,13 @@
 package config_test
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"math/big"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -26,6 +33,7 @@ var envKeys = []string{
 	"HTTP_REQUEST_TIMEOUT",
 	"HTTP_TLS_CERT_FILE",
 	"HTTP_TLS_KEY_FILE",
+	"HTTP_TLS_CLIENT_CA_FILE",
 	"HTTP_TRUSTED_PROXIES",
 	"POSTGRES_URL",
 	"REDIS_MODE",
@@ -288,6 +296,111 @@ func TestHttpConfig_TLSEnabled(t *testing.T) {
 			h := config.HttpConfig{TLSCertFile: tc.cert, TLSKeyFile: tc.key}
 			if got := h.TLSEnabled(); got != tc.want {
 				t.Errorf("TLSEnabled() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// writeCertPEM writes a minimal self-signed certificate in PEM form to path so
+// it parses as a real CA bundle (unlike the placeholder bytes used where only
+// readability matters).
+func writeCertPEM(t *testing.T, path string) {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "test-ca"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+		IsCA:         true,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatalf("create certificate: %v", err)
+	}
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+	if err := os.WriteFile(path, pemBytes, 0o600); err != nil {
+		t.Fatalf("write %s: %v", path, err)
+	}
+}
+
+func TestValidate_MTLS(t *testing.T) {
+	dir := t.TempDir()
+	cert := filepath.Join(dir, "cert.pem")
+	key := filepath.Join(dir, "key.pem")
+	for _, f := range []string{cert, key} {
+		if err := os.WriteFile(f, []byte("pem"), 0o600); err != nil {
+			t.Fatalf("write %s: %v", f, err)
+		}
+	}
+	caCert := filepath.Join(dir, "ca.pem")
+	writeCertPEM(t, caCert)
+	badCA := filepath.Join(dir, "bad-ca.pem")
+	if err := os.WriteFile(badCA, []byte("not a pem"), 0o600); err != nil {
+		t.Fatalf("write %s: %v", badCA, err)
+	}
+	missing := filepath.Join(dir, "absent.pem")
+
+	base := func() config.Config {
+		return config.Config{
+			App:   config.AppConfig{LogLevel: "info"},
+			Http:  config.HttpConfig{Addr: ":8080", ReadTimeout: time.Second, WriteTimeout: time.Second, IdleTimeout: time.Second, ShutdownTimeout: time.Second, RequestTimeout: time.Second},
+			Redis: config.RedisConfig{Mode: config.RedisStandalone, Addrs: []string{"localhost:6379"}},
+		}
+	}
+
+	tests := []struct {
+		name     string
+		cert     string
+		key      string
+		clientCA string
+		wantErr  bool
+	}{
+		{"no mtls", cert, key, "", false},
+		{"valid client ca", cert, key, caCert, false},
+		{"client ca without server tls", "", "", caCert, true},
+		{"client ca file missing", cert, key, missing, true},
+		{"client ca unparseable", cert, key, badCA, true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			c := base()
+			c.Http.TLSCertFile = tc.cert
+			c.Http.TLSKeyFile = tc.key
+			c.Http.TLSClientCAFile = tc.clientCA
+			err := c.Validate()
+			if tc.wantErr && err == nil {
+				t.Errorf("Validate() = nil, want error")
+			}
+			if !tc.wantErr && err != nil {
+				t.Errorf("Validate() = %v, want nil", err)
+			}
+		})
+	}
+}
+
+func TestHttpConfig_MTLSEnabled(t *testing.T) {
+	tests := []struct {
+		name     string
+		cert     string
+		key      string
+		clientCA string
+		want     bool
+	}{
+		{"none", "", "", "", false},
+		{"tls only", "cert.pem", "key.pem", "", false},
+		{"client ca only", "", "", "ca.pem", false},
+		{"tls and client ca", "cert.pem", "key.pem", "ca.pem", true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			h := config.HttpConfig{TLSCertFile: tc.cert, TLSKeyFile: tc.key, TLSClientCAFile: tc.clientCA}
+			if got := h.MTLSEnabled(); got != tc.want {
+				t.Errorf("MTLSEnabled() = %v, want %v", got, tc.want)
 			}
 		})
 	}

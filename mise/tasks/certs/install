@@ -2,17 +2,22 @@
 # [MISE] description="Install the mkcert dev CA into the system/browser trust store and issue trusted tls/dev certs."
 # [MISE] tools={mkcert="1.4.4"}
 #
-# Convenience for running the local TLS stack in a browser without certificate
-# warnings. Unlike `certs:dev` (which uses a throwaway CA), this:
+# Convenience for running the local TLS/mTLS stacks in a browser without
+# certificate warnings. Unlike `certs:dev` (which uses a throwaway CA), this:
 #
 #   1. runs `mkcert -install` to add the local mkcert CA to the system trust
 #      store (and Firefox/Java stores when present) -- this may prompt for sudo;
-#   2. issues a leaf into tls/dev signed by that now-trusted CA;
+#   2. issues a server leaf and a client leaf into tls/dev signed by that
+#      now-trusted CA;
 #   3. copies the CA to tls/dev/rootCA.pem so --cacert verification still works.
 #
-# After this, https://localhost:8443 and https://localhost:9443 are trusted by
-# your browser. Because `compose:tls:up` -> `certs:dev` is idempotent, these
-# trusted certs survive bringing the stack up. To undo the trust later, run
+# After this, the browser-facing endpoints are trusted by your browser:
+# https://localhost:8443 and https://localhost:9443 (`tls` profile) and
+# https://localhost:9444 (the `mtls` profile's Caddy proxy). Note the mTLS
+# backend itself (https://localhost:8444) requires a client certificate, so a
+# plain browser request to it is rejected by design -- use the 9444 proxy.
+# Because `compose:tls:up`/`compose:mtls:up` -> `certs:dev` is idempotent, these
+# trusted certs survive bringing a stack up. To undo the trust later, run
 # `mkcert -uninstall`.
 
 set -euo pipefail
@@ -26,13 +31,23 @@ mkdir -p "$certs_dir"
 echo "Installing the mkcert local CA into the system trust store ..."
 mkcert -install
 
-# Issue a leaf signed by the installed CA, overwriting any ephemeral certs so
-# tls/dev becomes browser-trusted.
-echo "Issuing browser-trusted leaf certificate -> ${certs_dir}/devopsbin.pem"
+# Issue a server leaf signed by the installed CA, overwriting any ephemeral
+# certs so tls/dev becomes browser-trusted. The api-mtls SAN lets a re-encrypting
+# proxy verify the upstream by name in the `mtls` profile.
+echo "Issuing browser-trusted server leaf certificate -> ${certs_dir}/devopsbin.pem"
 mkcert \
     -cert-file "${certs_dir}/devopsbin.pem" \
     -key-file "${certs_dir}/devopsbin-key.pem" \
-    localhost 127.0.0.1 ::1
+    localhost 127.0.0.1 ::1 api-mtls
+
+# Issue a client leaf (mutual TLS) signed by the same CA, used by the proxy and
+# the in-container healthcheck to authenticate to the mTLS backend.
+echo "Issuing client leaf certificate -> ${certs_dir}/devopsbin-client.pem"
+mkcert \
+    -client \
+    -cert-file "${certs_dir}/devopsbin-client.pem" \
+    -key-file "${certs_dir}/devopsbin-client-key.pem" \
+    localhost 127.0.0.1 ::1 caddy-mtls api-mtls
 
 caroot="$(mkcert -CAROOT)"
 echo "Copying CA -> ${certs_dir}/rootCA.pem (from ${caroot}/rootCA.pem)"

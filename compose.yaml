@@ -423,6 +423,92 @@ services:
       tls:
         ipv4_address: 172.16.7.10
 
+  # --- mtls profile: mutual TLS between the binary and a re-encrypting proxy --
+  # The binary serves HTTPS and requires a client certificate
+  # (HTTP_TLS_CLIENT_CA_FILE). Caddy terminates the browser-facing TLS and then
+  # re-encrypts to the backend, presenting a client certificate so the backend
+  # accepts the connection. Datastores are dedicated to this profile, and the
+  # network pins an explicit subnet with Caddy on a static address so the backend
+  # can trust exactly that peer via HTTP_TRUSTED_PROXIES.
+  postgres-mtls:
+    <<: *postgres-base
+    profiles:
+      - mtls
+    networks:
+      - mtls
+  redis-mtls:
+    <<: *redis-base
+    profiles:
+      - mtls
+    networks:
+      - mtls
+
+  api-mtls:
+    <<: *api-base
+    profiles:
+      - mtls
+    environment:
+      POSTGRES_URL: postgres://devopsbin:devopsbin@postgres-mtls:5432/devopsbin?sslmode=disable
+      REDIS_MODE: standalone
+      REDIS_ADDRS: redis-mtls:6379
+      HTTP_ADDR: ":8443"
+      HTTP_TLS_CERT_FILE: /certs/devopsbin.pem
+      HTTP_TLS_KEY_FILE: /certs/devopsbin-key.pem
+      # Require every client to present a certificate signed by this CA.
+      HTTP_TLS_CLIENT_CA_FILE: /certs/rootCA.pem
+      # Trust only Caddy's static address (below) for forwarded headers.
+      HTTP_TRUSTED_PROXIES: 172.16.8.10/32
+    volumes:
+      # tls/dev for the local `compose:mtls:up` stack; smoke overrides this to
+      # tls/test via TLS_CERTS_DIR (see `compose:mtls:test:up`).
+      - ${TLS_CERTS_DIR:-./tls/dev}:/certs:ro
+    ports:
+      # Direct host access for the mTLS smoke probes (verifies both rejection
+      # without a client cert and success with one).
+      - "8444:8443"
+    # Probe over mTLS: verify the server against the mkcert CA and present the
+    # client certificate so RequireAndVerifyClientCert accepts the connection.
+    healthcheck:
+      test:
+        - CMD
+        - /devopsbin
+        - healthcheck
+        - --url
+        - https://127.0.0.1:8443/api/v1/livez
+        - --cacert
+        - /certs/rootCA.pem
+        - --cert
+        - /certs/devopsbin-client.pem
+        - --key
+        - /certs/devopsbin-client-key.pem
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      postgres-mtls:
+        condition: service_healthy
+      redis-mtls:
+        condition: service_healthy
+    networks:
+      - mtls
+
+  caddy-mtls:
+    image: caddy:2.11.4
+    profiles:
+      - mtls
+    volumes:
+      - ./tls/Caddyfile.mtls:/etc/caddy/Caddyfile:ro
+      - ${TLS_CERTS_DIR:-./tls/dev}:/certs:ro
+    ports:
+      - "9444:443"
+    depends_on:
+      api-mtls:
+        condition: service_healthy
+    networks:
+      mtls:
+        ipv4_address: 172.16.8.10
+
 networks:
   test:
   dev:
@@ -432,3 +518,7 @@ networks:
     ipam:
       config:
         - subnet: 172.16.7.0/24
+  mtls:
+    ipam:
+      config:
+        - subnet: 172.16.8.0/24

@@ -202,6 +202,12 @@ jobs:
       - name: Smoke test the Compose tls profile
         run: mise run smoke:tls
 
+      # Exercises mutual TLS: the binary serving HTTPS with
+      # RequireAndVerifyClientCert, probed directly with a client certificate
+      # and through a Caddy proxy that re-encrypts to the backend over mTLS.
+      - name: Smoke test the Compose mtls profile
+        run: mise run smoke:mtls
+
   # Builds the multi-platform container image. On pull requests it exports an
   # OCI archive (validation, no registry); on pushes to main it pushes the
   # manifest to GHCR. Runs only after the checks above pass.

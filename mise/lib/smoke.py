@@ -58,6 +58,21 @@ def use_ca_cert(ca_cert: str | None) -> None:
     _SSL_CONTEXT = ctx
 
 
+def use_client_cert(cert: str, key: str) -> None:
+    """Add a client certificate to the shared TLS context for mutual TLS.
+
+    Requires a CA context (call use_ca_cert first). Once installed, HTTPS
+    requests present this certificate when the server requests one, satisfying a
+    backend configured with RequireAndVerifyClientCert.
+    """
+    global _SSL_CONTEXT
+    if _SSL_CONTEXT is None:
+        raise SmokeError(
+            "use_client_cert requires a CA context (call use_ca_cert first)"
+        )
+    _SSL_CONTEXT.load_cert_chain(certfile=cert, keyfile=key)
+
+
 # RFC 4122 version 4 UUID (any variant nibble 8-b in the documented range).
 UUID_V4_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
@@ -584,6 +599,55 @@ def run_tls_checks(
     check_scheme(proxied_url, "https")
 
 
+def check_mtls_rejected(base_url: str) -> None:
+    """Without a client certificate the mTLS server must reject the connection.
+
+    The current TLS context must NOT carry a client certificate (call this
+    before use_client_cert). The backend serves HTTPS with
+    RequireAndVerifyClientCert, so the handshake must fail rather than return a
+    response.
+    """
+    try:
+        http_get(f"{base_url}{API_PREFIX}/livez", timeout=5.0, log=False)
+    except (urllib.error.URLError, ssl.SSLError, OSError) as exc:
+        print(
+            f"[ok] mTLS rejects a connection with no client certificate ({type(exc).__name__})"
+        )
+        return
+    raise SmokeError("mTLS server accepted a connection without a client certificate")
+
+
+def run_mtls_checks(
+    direct_url: str,
+    proxied_url: str,
+    proxy_ip: str,
+    client_cert: str,
+    client_key: str,
+    timeout: float,
+) -> None:
+    """Probe mutual TLS: rejection without a client cert, then both topologies.
+
+    The shared TLS context starts with the CA only (set by the caller), so the
+    rejection check runs first. After installing the client certificate, the
+    direct path authenticates to the backend, and the proxied path goes through
+    Caddy, which re-encrypts to the backend with its own client certificate.
+    """
+    print("\n== Direct mTLS without a client certificate (must be rejected) ==")
+    check_mtls_rejected(direct_url)
+
+    use_client_cert(client_cert, client_key)
+
+    print(f"\n== Direct mTLS: {direct_url} ==")
+    run_checks(direct_url, timeout, expected_scheme="https")
+    check_forwarded_ignored(direct_url)
+
+    print(f"\n== Proxied (Caddy re-encrypting to mTLS backend): {proxied_url} ==")
+    wait_for_api(proxied_url, timeout)
+    check_livez(proxied_url)
+    check_forwarded_honored(proxied_url, proxy_ip)
+    check_scheme(proxied_url, "https")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -658,6 +722,71 @@ def main_tls(argv: list[str] | None = None) -> int:
         use_ca_cert(args.ca_cert)
         run_tls_checks(args.direct_url, args.proxied_url, args.proxy_ip, args.timeout)
         print("\nAll TLS smoke checks passed.")
+        return 0
+    except SmokeError as exc:
+        print(f"\nSMOKE FAILED: {exc}", file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:
+        print("\nInterrupted.", file=sys.stderr)
+        return 130
+
+
+def main_mtls(argv: list[str] | None = None) -> int:
+    """Entry point for the mTLS smoke task: direct mTLS + re-encrypting proxy."""
+    parser = argparse.ArgumentParser(
+        description=run_mtls_checks.__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "--direct-url",
+        default="https://localhost:8444",
+        help="direct mTLS api base URL (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--proxied-url",
+        default="https://localhost:9444",
+        help="Caddy-terminated proxied base URL (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--proxy-ip",
+        default="172.16.8.10",
+        help="Caddy's trusted address, which must NOT appear as the proxied "
+        "origin (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--ca-cert",
+        required=True,
+        help="PEM CA bundle to verify the mkcert-issued server certificates",
+    )
+    parser.add_argument(
+        "--client-cert",
+        required=True,
+        help="PEM client certificate presented to the mTLS backend",
+    )
+    parser.add_argument(
+        "--client-key",
+        required=True,
+        help="PEM private key for --client-cert",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=120.0,
+        help="seconds to wait for each API (default: %(default)s)",
+    )
+    args = parser.parse_args(argv)
+
+    try:
+        use_ca_cert(args.ca_cert)
+        run_mtls_checks(
+            args.direct_url,
+            args.proxied_url,
+            args.proxy_ip,
+            args.client_cert,
+            args.client_key,
+            args.timeout,
+        )
+        print("\nAll mTLS smoke checks passed.")
         return 0
     except SmokeError as exc:
         print(f"\nSMOKE FAILED: {exc}", file=sys.stderr)
