@@ -44,6 +44,10 @@
   // when the selected method accepts a body (see bodyAllowed).
   let body = $state('')
 
+  // contentType holds the Content-Type header sent with the request body for
+  // methods that carry one. Defaults to text/plain.
+  let contentType = $state('text/plain')
+
   // query holds the raw query string (e.g. "foo=bar&foo=baz") appended to the
   // request URL for endpoints that reflect query parameters.
   let queryString = $state('')
@@ -81,6 +85,7 @@
       result = await call(path, values, {
         method: selectedMethod,
         body: bodyAllowed ? body : undefined,
+        contentType: bodyAllowed ? contentType : undefined,
         query: supportsQuery ? queryString : undefined,
       })
     } finally {
@@ -143,6 +148,16 @@
         </select>
       </label>
       {#if bodyAllowed}
+        <label class="flex flex-col gap-1 text-xs">
+          <span class="font-medium text-slate-400">Content-Type</span>
+          <input
+            type="text"
+            bind:value={contentType}
+            disabled={loading}
+            placeholder="text/plain"
+            class="w-44 rounded-lg border border-slate-700 bg-slate-950/80 px-2.5 py-1.5 font-mono text-sm text-slate-200 focus:border-sky-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 disabled:opacity-50"
+          />
+        </label>
         <label class="flex flex-1 flex-col gap-1 text-xs">
           <span class="font-medium text-slate-400">Body</span>
           <textarea

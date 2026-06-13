@@ -46,6 +46,9 @@ export type CallArgs = Record<string, string>
 export interface CallOptions {
   method?: string
   body?: string
+  // contentType sets the Content-Type header for body-carrying methods (POST,
+  // PUT, PATCH, DELETE). Defaults to text/plain when omitted.
+  contentType?: string
   // query is a raw query string (e.g. "foo=bar&foo=baz"), with or without a
   // leading "?". It is appended verbatim so callers can send repeated keys.
   query?: string
@@ -71,7 +74,7 @@ function echoRaw(opts: CallOptions): Promise<ApiResponse<unknown>> {
 
   const init: RequestInit = { method }
   if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) && opts.body != null) {
-    init.headers = { 'Content-Type': 'text/plain' }
+    init.headers = { 'Content-Type': opts.contentType || 'text/plain' }
     init.body = opts.body
   }
 

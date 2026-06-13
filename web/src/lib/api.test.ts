@@ -110,6 +110,22 @@ describe('call', () => {
     expect(init.method).toBe('GET')
   })
 
+  it('sets a custom Content-Type for /echo body methods', async () => {
+    const fetchMock = stubFetch(
+      async () =>
+        new Response(JSON.stringify({ method: 'POST' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+    )
+
+    await call('/echo', {}, { method: 'POST', body: '{"a":1}', contentType: 'application/json' })
+
+    expect(fetchMock).toHaveBeenCalledOnce()
+    const init = fetchMock.mock.calls[0][1] as RequestInit
+    expect(init.headers).toEqual({ 'Content-Type': 'application/json' })
+  })
+
   it('appends the query string to the /echo request URL', async () => {
     const fetchMock = stubFetch(
       async () =>
