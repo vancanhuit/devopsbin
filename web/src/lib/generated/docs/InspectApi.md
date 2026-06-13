@@ -4,13 +4,85 @@ All URIs are relative to */api/v1*
 
 | Method | HTTP request | Description |
 |------------- | ------------- | -------------|
+| [**deleteEcho**](InspectApi.md#deleteecho) | **DELETE** /echo | Echo the incoming request |
 | [**getEcho**](InspectApi.md#getecho) | **GET** /echo | Echo the incoming request |
 | [**getHeaders**](InspectApi.md#getheaders) | **GET** /headers | Echo the request headers |
 | [**getIp**](InspectApi.md#getip) | **GET** /ip | Return the caller\&#39;s IP address |
 | [**getScheme**](InspectApi.md#getscheme) | **GET** /scheme | Return the request scheme |
 | [**getUserAgent**](InspectApi.md#getuseragent) | **GET** /user-agent | Echo the User-Agent header |
 | [**getUuid**](InspectApi.md#getuuid) | **GET** /uuid | Generate a random UUID |
+| [**patchEcho**](InspectApi.md#patchecho) | **PATCH** /echo | Echo the incoming request |
+| [**postEcho**](InspectApi.md#postecho) | **POST** /echo | Echo the incoming request |
+| [**putEcho**](InspectApi.md#putecho) | **PUT** /echo | Echo the incoming request |
 
+
+
+## deleteEcho
+
+> EchoResponse deleteEcho(body)
+
+Echo the incoming request
+
+Returns details of the incoming request: HTTP method, path, query parameters, headers, origin IP address, scheme, and request body. 
+
+### Example
+
+```ts
+import {
+  Configuration,
+  InspectApi,
+} from '';
+import type { DeleteEchoRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new InspectApi();
+
+  const body = {
+    // string | An optional request body to reflect back. The body is read as plain text and echoed verbatim, up to 64 KiB.  (optional)
+    body: body_example,
+  } satisfies DeleteEchoRequest;
+
+  try {
+    const data = await api.deleteEcho(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **body** | `string` | An optional request body to reflect back. The body is read as plain text and echoed verbatim, up to 64 KiB.  | [Optional] |
+
+### Return type
+
+[**EchoResponse**](EchoResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: `text/plain`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | A reflection of the incoming request. |  -  |
+| **413** | The request body exceeds the maximum size that can be echoed. |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
 ## getEcho
@@ -363,6 +435,210 @@ No authorization required
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 | **200** | A random UUIDv4. |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## patchEcho
+
+> EchoResponse patchEcho(body)
+
+Echo the incoming request
+
+Returns details of the incoming request: HTTP method, path, query parameters, headers, origin IP address, scheme, and request body. 
+
+### Example
+
+```ts
+import {
+  Configuration,
+  InspectApi,
+} from '';
+import type { PatchEchoRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new InspectApi();
+
+  const body = {
+    // string | An optional request body to reflect back. The body is read as plain text and echoed verbatim, up to 64 KiB.  (optional)
+    body: body_example,
+  } satisfies PatchEchoRequest;
+
+  try {
+    const data = await api.patchEcho(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **body** | `string` | An optional request body to reflect back. The body is read as plain text and echoed verbatim, up to 64 KiB.  | [Optional] |
+
+### Return type
+
+[**EchoResponse**](EchoResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: `text/plain`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | A reflection of the incoming request. |  -  |
+| **413** | The request body exceeds the maximum size that can be echoed. |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## postEcho
+
+> EchoResponse postEcho(body)
+
+Echo the incoming request
+
+Returns details of the incoming request: HTTP method, path, query parameters, headers, origin IP address, scheme, and request body. 
+
+### Example
+
+```ts
+import {
+  Configuration,
+  InspectApi,
+} from '';
+import type { PostEchoRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new InspectApi();
+
+  const body = {
+    // string | An optional request body to reflect back. The body is read as plain text and echoed verbatim, up to 64 KiB.  (optional)
+    body: body_example,
+  } satisfies PostEchoRequest;
+
+  try {
+    const data = await api.postEcho(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **body** | `string` | An optional request body to reflect back. The body is read as plain text and echoed verbatim, up to 64 KiB.  | [Optional] |
+
+### Return type
+
+[**EchoResponse**](EchoResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: `text/plain`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | A reflection of the incoming request. |  -  |
+| **413** | The request body exceeds the maximum size that can be echoed. |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## putEcho
+
+> EchoResponse putEcho(body)
+
+Echo the incoming request
+
+Returns details of the incoming request: HTTP method, path, query parameters, headers, origin IP address, scheme, and request body. 
+
+### Example
+
+```ts
+import {
+  Configuration,
+  InspectApi,
+} from '';
+import type { PutEchoRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new InspectApi();
+
+  const body = {
+    // string | An optional request body to reflect back. The body is read as plain text and echoed verbatim, up to 64 KiB.  (optional)
+    body: body_example,
+  } satisfies PutEchoRequest;
+
+  try {
+    const data = await api.putEcho(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **body** | `string` | An optional request body to reflect back. The body is read as plain text and echoed verbatim, up to 64 KiB.  | [Optional] |
+
+### Return type
+
+[**EchoResponse**](EchoResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: `text/plain`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | A reflection of the incoming request. |  -  |
+| **413** | The request body exceeds the maximum size that can be echoed. |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 

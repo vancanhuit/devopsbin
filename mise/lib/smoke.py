@@ -180,6 +180,43 @@ def http_get(
     return response
 
 
+def http_send(
+    url: str,
+    method: str,
+    timeout: float,
+    *,
+    data: bytes | None = None,
+    headers: dict[str, str] | None = None,
+    log: bool = True,
+) -> Response:
+    """Issue a request that may carry a body (POST/PUT/PATCH/DELETE)."""
+    req = urllib.request.Request(url, data=data, method=method)
+    for name, value in (headers or {}).items():
+        req.add_header(name, value)
+    handlers: list[urllib.request.BaseHandler] = []
+    if _SSL_CONTEXT is not None:
+        handlers.append(urllib.request.HTTPSHandler(context=_SSL_CONTEXT))
+    opener = urllib.request.build_opener(*handlers)
+    try:
+        with opener.open(req, timeout=timeout) as resp:  # noqa: S310 (loopback only)
+            response = Response(
+                status=resp.status,
+                body=resp.read(),
+                content_type=resp.headers.get("Content-Type", ""),
+                location=resp.headers.get("Location", ""),
+            )
+    except urllib.error.HTTPError as exc:
+        response = Response(
+            status=exc.code,
+            body=exc.read(),
+            content_type=exc.headers.get("Content-Type", "") if exc.headers else "",
+            location=exc.headers.get("Location", "") if exc.headers else "",
+        )
+    if log:
+        _log_exchange(method, url, headers, response)
+    return response
+
+
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     """Surfaces 3xx responses as HTTPError instead of following them."""
 
@@ -365,7 +402,32 @@ def check_echo(base_url: str) -> None:
         scheme in ("http", "https"),
         f"echo: scheme {scheme!r}, want 'http' or 'https'",
     )
+    expect(
+        body.get("body") is None,
+        f"echo: body {body.get('body')!r}, want null for GET",
+    )
     print("[ok] echo -> 200 (reflects method, path, query, headers, origin, scheme)")
+
+    payload = "smoke-echo-body"
+    resp = http_send(
+        f"{base_url}{API_PREFIX}/echo",
+        "POST",
+        timeout=5.0,
+        data=payload.encode("utf-8"),
+        headers={"Content-Type": "text/plain"},
+    )
+    expect(resp.status == 200, f"echo POST: status {resp.status}, want 200")
+    body = resp.json()
+    expect(isinstance(body, dict), f"echo POST: body {body!r}, want object")
+    expect(
+        body.get("method") == "POST",
+        f"echo POST: method {body.get('method')!r}, want POST",
+    )
+    expect(
+        body.get("body") == payload,
+        f"echo POST: body {body.get('body')!r}, want {payload!r}",
+    )
+    print("[ok] echo POST -> 200 (reflects method and request body)")
 
 
 def check_status(base_url: str) -> None:

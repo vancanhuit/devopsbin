@@ -19,6 +19,11 @@ import {
     EchoResponseToJSON,
 } from '../models/EchoResponse';
 import {
+    type ErrorResponse,
+    ErrorResponseFromJSON,
+    ErrorResponseToJSON,
+} from '../models/ErrorResponse';
+import {
     type HeadersResponse,
     HeadersResponseFromJSON,
     HeadersResponseToJSON,
@@ -44,6 +49,22 @@ import {
     UuidResponseToJSON,
 } from '../models/UuidResponse';
 
+export interface DeleteEchoRequest {
+    body?: string;
+}
+
+export interface PatchEchoRequest {
+    body?: string;
+}
+
+export interface PostEchoRequest {
+    body?: string;
+}
+
+export interface PutEchoRequest {
+    body?: string;
+}
+
 /**
  * InspectApi - interface
  * 
@@ -51,6 +72,30 @@ import {
  * @interface InspectApiInterface
  */
 export interface InspectApiInterface {
+    /**
+     * Creates request options for deleteEcho without sending the request
+     * @param {string} [body] An optional request body to reflect back. The body is read as plain text and echoed verbatim, up to 64 KiB. 
+     * @throws {RequiredError}
+     * @memberof InspectApiInterface
+     */
+    deleteEchoRequestOpts(requestParameters: DeleteEchoRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Returns details of the incoming request: HTTP method, path, query parameters, headers, origin IP address, scheme, and request body. 
+     * @summary Echo the incoming request
+     * @param {string} [body] An optional request body to reflect back. The body is read as plain text and echoed verbatim, up to 64 KiB. 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof InspectApiInterface
+     */
+    deleteEchoRaw(requestParameters: DeleteEchoRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<EchoResponse>>;
+
+    /**
+     * Returns details of the incoming request: HTTP method, path, query parameters, headers, origin IP address, scheme, and request body. 
+     * Echo the incoming request
+     */
+    deleteEcho(requestParameters: DeleteEchoRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EchoResponse>;
+
     /**
      * Creates request options for getEcho without sending the request
      * @throws {RequiredError}
@@ -183,12 +228,126 @@ export interface InspectApiInterface {
      */
     getUuid(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<UuidResponse>;
 
+    /**
+     * Creates request options for patchEcho without sending the request
+     * @param {string} [body] An optional request body to reflect back. The body is read as plain text and echoed verbatim, up to 64 KiB. 
+     * @throws {RequiredError}
+     * @memberof InspectApiInterface
+     */
+    patchEchoRequestOpts(requestParameters: PatchEchoRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Returns details of the incoming request: HTTP method, path, query parameters, headers, origin IP address, scheme, and request body. 
+     * @summary Echo the incoming request
+     * @param {string} [body] An optional request body to reflect back. The body is read as plain text and echoed verbatim, up to 64 KiB. 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof InspectApiInterface
+     */
+    patchEchoRaw(requestParameters: PatchEchoRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<EchoResponse>>;
+
+    /**
+     * Returns details of the incoming request: HTTP method, path, query parameters, headers, origin IP address, scheme, and request body. 
+     * Echo the incoming request
+     */
+    patchEcho(requestParameters: PatchEchoRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EchoResponse>;
+
+    /**
+     * Creates request options for postEcho without sending the request
+     * @param {string} [body] An optional request body to reflect back. The body is read as plain text and echoed verbatim, up to 64 KiB. 
+     * @throws {RequiredError}
+     * @memberof InspectApiInterface
+     */
+    postEchoRequestOpts(requestParameters: PostEchoRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Returns details of the incoming request: HTTP method, path, query parameters, headers, origin IP address, scheme, and request body. 
+     * @summary Echo the incoming request
+     * @param {string} [body] An optional request body to reflect back. The body is read as plain text and echoed verbatim, up to 64 KiB. 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof InspectApiInterface
+     */
+    postEchoRaw(requestParameters: PostEchoRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<EchoResponse>>;
+
+    /**
+     * Returns details of the incoming request: HTTP method, path, query parameters, headers, origin IP address, scheme, and request body. 
+     * Echo the incoming request
+     */
+    postEcho(requestParameters: PostEchoRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EchoResponse>;
+
+    /**
+     * Creates request options for putEcho without sending the request
+     * @param {string} [body] An optional request body to reflect back. The body is read as plain text and echoed verbatim, up to 64 KiB. 
+     * @throws {RequiredError}
+     * @memberof InspectApiInterface
+     */
+    putEchoRequestOpts(requestParameters: PutEchoRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Returns details of the incoming request: HTTP method, path, query parameters, headers, origin IP address, scheme, and request body. 
+     * @summary Echo the incoming request
+     * @param {string} [body] An optional request body to reflect back. The body is read as plain text and echoed verbatim, up to 64 KiB. 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof InspectApiInterface
+     */
+    putEchoRaw(requestParameters: PutEchoRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<EchoResponse>>;
+
+    /**
+     * Returns details of the incoming request: HTTP method, path, query parameters, headers, origin IP address, scheme, and request body. 
+     * Echo the incoming request
+     */
+    putEcho(requestParameters: PutEchoRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EchoResponse>;
+
 }
 
 /**
  * 
  */
 export class InspectApi extends runtime.BaseAPI implements InspectApiInterface {
+
+    /**
+     * Creates request options for deleteEcho without sending the request
+     */
+    async deleteEchoRequestOpts(requestParameters: DeleteEchoRequest): Promise<runtime.RequestOpts> {
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'text/plain';
+
+
+        let urlPath = `/echo`;
+
+        return {
+            path: urlPath,
+            method: 'DELETE',
+            headers: headerParameters,
+            query: queryParameters,
+            body: requestParameters['body'] as any,
+        };
+    }
+
+    /**
+     * Returns details of the incoming request: HTTP method, path, query parameters, headers, origin IP address, scheme, and request body. 
+     * Echo the incoming request
+     */
+    async deleteEchoRaw(requestParameters: DeleteEchoRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<EchoResponse>> {
+        const requestOptions = await this.deleteEchoRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => EchoResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Returns details of the incoming request: HTTP method, path, query parameters, headers, origin IP address, scheme, and request body. 
+     * Echo the incoming request
+     */
+    async deleteEcho(requestParameters: DeleteEchoRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EchoResponse> {
+        const response = await this.deleteEchoRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
 
     /**
      * Creates request options for getEcho without sending the request
@@ -421,6 +580,132 @@ export class InspectApi extends runtime.BaseAPI implements InspectApiInterface {
      */
     async getUuid(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<UuidResponse> {
         const response = await this.getUuidRaw(initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for patchEcho without sending the request
+     */
+    async patchEchoRequestOpts(requestParameters: PatchEchoRequest): Promise<runtime.RequestOpts> {
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'text/plain';
+
+
+        let urlPath = `/echo`;
+
+        return {
+            path: urlPath,
+            method: 'PATCH',
+            headers: headerParameters,
+            query: queryParameters,
+            body: requestParameters['body'] as any,
+        };
+    }
+
+    /**
+     * Returns details of the incoming request: HTTP method, path, query parameters, headers, origin IP address, scheme, and request body. 
+     * Echo the incoming request
+     */
+    async patchEchoRaw(requestParameters: PatchEchoRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<EchoResponse>> {
+        const requestOptions = await this.patchEchoRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => EchoResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Returns details of the incoming request: HTTP method, path, query parameters, headers, origin IP address, scheme, and request body. 
+     * Echo the incoming request
+     */
+    async patchEcho(requestParameters: PatchEchoRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EchoResponse> {
+        const response = await this.patchEchoRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for postEcho without sending the request
+     */
+    async postEchoRequestOpts(requestParameters: PostEchoRequest): Promise<runtime.RequestOpts> {
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'text/plain';
+
+
+        let urlPath = `/echo`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: requestParameters['body'] as any,
+        };
+    }
+
+    /**
+     * Returns details of the incoming request: HTTP method, path, query parameters, headers, origin IP address, scheme, and request body. 
+     * Echo the incoming request
+     */
+    async postEchoRaw(requestParameters: PostEchoRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<EchoResponse>> {
+        const requestOptions = await this.postEchoRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => EchoResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Returns details of the incoming request: HTTP method, path, query parameters, headers, origin IP address, scheme, and request body. 
+     * Echo the incoming request
+     */
+    async postEcho(requestParameters: PostEchoRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EchoResponse> {
+        const response = await this.postEchoRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for putEcho without sending the request
+     */
+    async putEchoRequestOpts(requestParameters: PutEchoRequest): Promise<runtime.RequestOpts> {
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'text/plain';
+
+
+        let urlPath = `/echo`;
+
+        return {
+            path: urlPath,
+            method: 'PUT',
+            headers: headerParameters,
+            query: queryParameters,
+            body: requestParameters['body'] as any,
+        };
+    }
+
+    /**
+     * Returns details of the incoming request: HTTP method, path, query parameters, headers, origin IP address, scheme, and request body. 
+     * Echo the incoming request
+     */
+    async putEchoRaw(requestParameters: PutEchoRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<EchoResponse>> {
+        const requestOptions = await this.putEchoRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => EchoResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Returns details of the incoming request: HTTP method, path, query parameters, headers, origin IP address, scheme, and request body. 
+     * Echo the incoming request
+     */
+    async putEcho(requestParameters: PutEchoRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EchoResponse> {
+        const response = await this.putEchoRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

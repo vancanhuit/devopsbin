@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"path"
@@ -147,6 +148,9 @@ type DependencyCheckStatus string
 
 // EchoResponse defines model for EchoResponse.
 type EchoResponse struct {
+	// Body The request body echoed back verbatim. Null for methods that carry no body (such as GET).
+	Body *string `json:"body,omitempty"`
+
 	// Headers A mapping of names to their list of values, used for both HTTP headers and query parameters (each may appear more than once).
 	Headers HeaderMap `json:"headers"`
 	Method  string    `json:"method"`
@@ -250,14 +254,56 @@ type VersionResponse struct {
 	Version   string    `json:"version"`
 }
 
+// EchoBodyTooLarge defines model for EchoBodyTooLarge.
+type EchoBodyTooLarge = ErrorResponse
+
+// EchoReflection defines model for EchoReflection.
+type EchoReflection = EchoResponse
+
+// DeleteEchoTextBody defines parameters for DeleteEcho.
+type DeleteEchoTextBody = string
+
+// PatchEchoTextBody defines parameters for PatchEcho.
+type PatchEchoTextBody = string
+
+// PostEchoTextBody defines parameters for PostEcho.
+type PostEchoTextBody = string
+
+// PutEchoTextBody defines parameters for PutEcho.
+type PutEchoTextBody = string
+
+// DeleteEchoTextRequestBody defines body for DeleteEcho for text/plain ContentType.
+type DeleteEchoTextRequestBody = DeleteEchoTextBody
+
+// PatchEchoTextRequestBody defines body for PatchEcho for text/plain ContentType.
+type PatchEchoTextRequestBody = PatchEchoTextBody
+
+// PostEchoTextRequestBody defines body for PostEcho for text/plain ContentType.
+type PostEchoTextRequestBody = PostEchoTextBody
+
+// PutEchoTextRequestBody defines body for PutEcho for text/plain ContentType.
+type PutEchoTextRequestBody = PutEchoTextBody
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// Delay the response by a given number of seconds
 	// (GET /delay/{seconds})
 	GetDelay(w http.ResponseWriter, r *http.Request, seconds float64)
 	// Echo the incoming request
+	// (DELETE /echo)
+	DeleteEcho(w http.ResponseWriter, r *http.Request)
+	// Echo the incoming request
 	// (GET /echo)
 	GetEcho(w http.ResponseWriter, r *http.Request)
+	// Echo the incoming request
+	// (PATCH /echo)
+	PatchEcho(w http.ResponseWriter, r *http.Request)
+	// Echo the incoming request
+	// (POST /echo)
+	PostEcho(w http.ResponseWriter, r *http.Request)
+	// Echo the incoming request
+	// (PUT /echo)
+	PutEcho(w http.ResponseWriter, r *http.Request)
 	// Echo the request headers
 	// (GET /headers)
 	GetHeaders(w http.ResponseWriter, r *http.Request)
@@ -301,8 +347,32 @@ func (_ Unimplemented) GetDelay(w http.ResponseWriter, r *http.Request, seconds 
 }
 
 // Echo the incoming request
+// (DELETE /echo)
+func (_ Unimplemented) DeleteEcho(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Echo the incoming request
 // (GET /echo)
 func (_ Unimplemented) GetEcho(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Echo the incoming request
+// (PATCH /echo)
+func (_ Unimplemented) PatchEcho(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Echo the incoming request
+// (POST /echo)
+func (_ Unimplemented) PostEcho(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Echo the incoming request
+// (PUT /echo)
+func (_ Unimplemented) PutEcho(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -401,11 +471,67 @@ func (siw *ServerInterfaceWrapper) GetDelay(w http.ResponseWriter, r *http.Reque
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteEcho operation middleware
+func (siw *ServerInterfaceWrapper) DeleteEcho(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteEcho(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetEcho operation middleware
 func (siw *ServerInterfaceWrapper) GetEcho(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetEcho(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PatchEcho operation middleware
+func (siw *ServerInterfaceWrapper) PatchEcho(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PatchEcho(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostEcho operation middleware
+func (siw *ServerInterfaceWrapper) PostEcho(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostEcho(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutEcho operation middleware
+func (siw *ServerInterfaceWrapper) PutEcho(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutEcho(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -684,7 +810,19 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/delay/{seconds}", wrapper.GetDelay)
 	})
 	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/echo", wrapper.DeleteEcho)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/echo", wrapper.GetEcho)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/echo", wrapper.PatchEcho)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/echo", wrapper.PostEcho)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/echo", wrapper.PutEcho)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/headers", wrapper.GetHeaders)
@@ -719,6 +857,10 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 
 	return r
 }
+
+type EchoBodyTooLargeJSONResponse ErrorResponse
+
+type EchoReflectionJSONResponse EchoResponse
 
 type GetDelayRequestObject struct {
 	Seconds float64 `json:"seconds"`
@@ -756,6 +898,42 @@ func (response GetDelay400JSONResponse) VisitGetDelayResponse(w http.ResponseWri
 	return err
 }
 
+type DeleteEchoRequestObject struct {
+	Body *DeleteEchoTextRequestBody
+}
+
+type DeleteEchoResponseObject interface {
+	VisitDeleteEchoResponse(w http.ResponseWriter) error
+}
+
+type DeleteEcho200JSONResponse struct{ EchoReflectionJSONResponse }
+
+func (response DeleteEcho200JSONResponse) VisitDeleteEchoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteEcho413JSONResponse struct{ EchoBodyTooLargeJSONResponse }
+
+func (response DeleteEcho413JSONResponse) VisitDeleteEchoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetEchoRequestObject struct {
 }
 
@@ -773,6 +951,114 @@ func (response GetEcho200JSONResponse) VisitGetEchoResponse(w http.ResponseWrite
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchEchoRequestObject struct {
+	Body *PatchEchoTextRequestBody
+}
+
+type PatchEchoResponseObject interface {
+	VisitPatchEchoResponse(w http.ResponseWriter) error
+}
+
+type PatchEcho200JSONResponse struct{ EchoReflectionJSONResponse }
+
+func (response PatchEcho200JSONResponse) VisitPatchEchoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchEcho413JSONResponse struct{ EchoBodyTooLargeJSONResponse }
+
+func (response PatchEcho413JSONResponse) VisitPatchEchoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEchoRequestObject struct {
+	Body *PostEchoTextRequestBody
+}
+
+type PostEchoResponseObject interface {
+	VisitPostEchoResponse(w http.ResponseWriter) error
+}
+
+type PostEcho200JSONResponse struct{ EchoReflectionJSONResponse }
+
+func (response PostEcho200JSONResponse) VisitPostEchoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEcho413JSONResponse struct{ EchoBodyTooLargeJSONResponse }
+
+func (response PostEcho413JSONResponse) VisitPostEchoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutEchoRequestObject struct {
+	Body *PutEchoTextRequestBody
+}
+
+type PutEchoResponseObject interface {
+	VisitPutEchoResponse(w http.ResponseWriter) error
+}
+
+type PutEcho200JSONResponse struct{ EchoReflectionJSONResponse }
+
+func (response PutEcho200JSONResponse) VisitPutEchoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutEcho413JSONResponse struct{ EchoBodyTooLargeJSONResponse }
+
+func (response PutEcho413JSONResponse) VisitPutEchoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(413)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -1039,8 +1325,20 @@ type StrictServerInterface interface {
 	// (GET /delay/{seconds})
 	GetDelay(ctx context.Context, request GetDelayRequestObject) (GetDelayResponseObject, error)
 	// Echo the incoming request
+	// (DELETE /echo)
+	DeleteEcho(ctx context.Context, request DeleteEchoRequestObject) (DeleteEchoResponseObject, error)
+	// Echo the incoming request
 	// (GET /echo)
 	GetEcho(ctx context.Context, request GetEchoRequestObject) (GetEchoResponseObject, error)
+	// Echo the incoming request
+	// (PATCH /echo)
+	PatchEcho(ctx context.Context, request PatchEchoRequestObject) (PatchEchoResponseObject, error)
+	// Echo the incoming request
+	// (POST /echo)
+	PostEcho(ctx context.Context, request PostEchoRequestObject) (PostEchoResponseObject, error)
+	// Echo the incoming request
+	// (PUT /echo)
+	PutEcho(ctx context.Context, request PutEchoRequestObject) (PutEchoResponseObject, error)
 	// Echo the request headers
 	// (GET /headers)
 	GetHeaders(ctx context.Context, request GetHeadersRequestObject) (GetHeadersResponseObject, error)
@@ -1128,6 +1426,40 @@ func (sh *strictHandler) GetDelay(w http.ResponseWriter, r *http.Request, second
 	}
 }
 
+// DeleteEcho operation middleware
+func (sh *strictHandler) DeleteEcho(w http.ResponseWriter, r *http.Request) {
+	var request DeleteEchoRequestObject
+
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't read body: %w", err))
+		return
+	}
+	if len(data) > 0 {
+		body := DeleteEchoTextRequestBody(data)
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteEcho(ctx, request.(DeleteEchoRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteEcho")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteEchoResponseObject); ok {
+		if err := validResponse.VisitDeleteEchoResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetEcho operation middleware
 func (sh *strictHandler) GetEcho(w http.ResponseWriter, r *http.Request) {
 	var request GetEchoRequestObject
@@ -1145,6 +1477,108 @@ func (sh *strictHandler) GetEcho(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetEchoResponseObject); ok {
 		if err := validResponse.VisitGetEchoResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PatchEcho operation middleware
+func (sh *strictHandler) PatchEcho(w http.ResponseWriter, r *http.Request) {
+	var request PatchEchoRequestObject
+
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't read body: %w", err))
+		return
+	}
+	if len(data) > 0 {
+		body := PatchEchoTextRequestBody(data)
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PatchEcho(ctx, request.(PatchEchoRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PatchEcho")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PatchEchoResponseObject); ok {
+		if err := validResponse.VisitPatchEchoResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostEcho operation middleware
+func (sh *strictHandler) PostEcho(w http.ResponseWriter, r *http.Request) {
+	var request PostEchoRequestObject
+
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't read body: %w", err))
+		return
+	}
+	if len(data) > 0 {
+		body := PostEchoTextRequestBody(data)
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostEcho(ctx, request.(PostEchoRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostEcho")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostEchoResponseObject); ok {
+		if err := validResponse.VisitPostEchoResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutEcho operation middleware
+func (sh *strictHandler) PutEcho(w http.ResponseWriter, r *http.Request) {
+	var request PutEchoRequestObject
+
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't read body: %w", err))
+		return
+	}
+	if len(data) > 0 {
+		body := PutEchoTextRequestBody(data)
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutEcho(ctx, request.(PutEchoRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutEcho")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutEchoResponseObject); ok {
+		if err := validResponse.VisitPutEchoResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -1399,46 +1833,51 @@ func (sh *strictHandler) GetVersion(w http.ResponseWriter, r *http.Request) {
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

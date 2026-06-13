@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/http"
 
@@ -42,10 +43,69 @@ func (s *Server) GetScheme(ctx context.Context, _ GetSchemeRequestObject) (GetSc
 // GetEcho implements the /echo endpoint, reflecting the incoming request's
 // method, path, query parameters, headers, origin IP, and scheme.
 func (s *Server) GetEcho(ctx context.Context, _ GetEchoRequestObject) (GetEchoResponseObject, error) {
-	resp := GetEcho200JSONResponse{
+	return GetEcho200JSONResponse(echoResponse(ctx, nil)), nil
+}
+
+// PostEcho implements POST /echo, reflecting the incoming request along with
+// its body.
+func (s *Server) PostEcho(ctx context.Context, request PostEchoRequestObject) (PostEchoResponseObject, error) {
+	resp, ok := echoWithBody(ctx, request.Body)
+	if !ok {
+		return PostEcho413JSONResponse{EchoBodyTooLargeJSONResponse{Error: echoBodyTooLargeMessage}}, nil
+	}
+	return PostEcho200JSONResponse{EchoReflectionJSONResponse(resp)}, nil
+}
+
+// PutEcho implements PUT /echo, reflecting the incoming request along with its
+// body.
+func (s *Server) PutEcho(ctx context.Context, request PutEchoRequestObject) (PutEchoResponseObject, error) {
+	resp, ok := echoWithBody(ctx, request.Body)
+	if !ok {
+		return PutEcho413JSONResponse{EchoBodyTooLargeJSONResponse{Error: echoBodyTooLargeMessage}}, nil
+	}
+	return PutEcho200JSONResponse{EchoReflectionJSONResponse(resp)}, nil
+}
+
+// PatchEcho implements PATCH /echo, reflecting the incoming request along with
+// its body.
+func (s *Server) PatchEcho(ctx context.Context, request PatchEchoRequestObject) (PatchEchoResponseObject, error) {
+	resp, ok := echoWithBody(ctx, request.Body)
+	if !ok {
+		return PatchEcho413JSONResponse{EchoBodyTooLargeJSONResponse{Error: echoBodyTooLargeMessage}}, nil
+	}
+	return PatchEcho200JSONResponse{EchoReflectionJSONResponse(resp)}, nil
+}
+
+// DeleteEcho implements DELETE /echo, reflecting the incoming request along
+// with its body.
+func (s *Server) DeleteEcho(ctx context.Context, request DeleteEchoRequestObject) (DeleteEchoResponseObject, error) {
+	resp, ok := echoWithBody(ctx, request.Body)
+	if !ok {
+		return DeleteEcho413JSONResponse{EchoBodyTooLargeJSONResponse{Error: echoBodyTooLargeMessage}}, nil
+	}
+	return DeleteEcho200JSONResponse{EchoReflectionJSONResponse(resp)}, nil
+}
+
+// maxEchoBodyBytes caps how large a request body the /echo endpoint will
+// reflect back. Larger bodies yield a 413 response.
+const maxEchoBodyBytes = 64 << 10 // 64 KiB
+
+// echoBodyTooLargeMessage is the error returned when a request body exceeds
+// maxEchoBodyBytes.
+var echoBodyTooLargeMessage = fmt.Sprintf(
+	"request body exceeds the maximum echo size of %d bytes", maxEchoBodyBytes,
+)
+
+// echoResponse builds the reflection of the request stored in ctx. The optional
+// body is echoed back verbatim; a nil body leaves the response's body field
+// unset. A nil request (no value in ctx) yields empty, non-nil maps so the JSON
+// response is always an object.
+func echoResponse(ctx context.Context, body *string) EchoResponse {
+	resp := EchoResponse{
 		Headers: HeaderMap{},
 		Query:   HeaderMap{},
 		Scheme:  EchoResponseSchemeHttp,
+		Body:    body,
 	}
 	if r := requestFrom(ctx); r != nil {
 		resp.Method = r.Method
@@ -55,7 +115,17 @@ func (s *Server) GetEcho(ctx context.Context, _ GetEchoRequestObject) (GetEchoRe
 		resp.Origin = originIP(r)
 		resp.Scheme = EchoResponseScheme(requestScheme(r))
 	}
-	return resp, nil
+	return resp
+}
+
+// echoWithBody reflects the request stored in ctx together with the given body.
+// It reports false (and an empty response) when the body exceeds
+// maxEchoBodyBytes, signaling the caller to return a 413.
+func echoWithBody(ctx context.Context, body *string) (EchoResponse, bool) {
+	if body != nil && len(*body) > maxEchoBodyBytes {
+		return EchoResponse{}, false
+	}
+	return echoResponse(ctx, body), true
 }
 
 // headerMap converts the request headers into the generated HeaderMap shape. A

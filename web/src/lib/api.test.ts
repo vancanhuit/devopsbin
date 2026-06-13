@@ -73,4 +73,72 @@ describe('call', () => {
     expect(result.status).toBe(0)
     expect(result.error).toContain('unknown endpoint')
   })
+
+  it('issues a POST with the request body for /echo', async () => {
+    const fetchMock = stubFetch(
+      async () =>
+        new Response(JSON.stringify({ method: 'POST', body: 'hello' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+    )
+
+    const result = await call('/echo', {}, { method: 'POST', body: 'hello' })
+
+    expect(fetchMock).toHaveBeenCalledOnce()
+    const init = fetchMock.mock.calls[0][1] as RequestInit
+    expect(init.method).toBe('POST')
+    expect(init.body).toBe('hello')
+    expect(result.ok).toBe(true)
+    expect(result.status).toBe(200)
+    expect(result.body).toEqual({ method: 'POST', body: 'hello' })
+  })
+
+  it('issues a GET for /echo when no method is given', async () => {
+    const fetchMock = stubFetch(
+      async () =>
+        new Response(JSON.stringify({ method: 'GET' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+    )
+
+    await call('/echo')
+
+    expect(fetchMock).toHaveBeenCalledOnce()
+    const init = fetchMock.mock.calls[0][1] as RequestInit
+    expect(init.method).toBe('GET')
+  })
+
+  it('sets a custom Content-Type for /echo body methods', async () => {
+    const fetchMock = stubFetch(
+      async () =>
+        new Response(JSON.stringify({ method: 'POST' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+    )
+
+    await call('/echo', {}, { method: 'POST', body: '{"a":1}', contentType: 'application/json' })
+
+    expect(fetchMock).toHaveBeenCalledOnce()
+    const init = fetchMock.mock.calls[0][1] as RequestInit
+    expect(init.headers).toEqual({ 'Content-Type': 'application/json' })
+  })
+
+  it('appends the query string to the /echo request URL', async () => {
+    const fetchMock = stubFetch(
+      async () =>
+        new Response(JSON.stringify({ method: 'GET' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+    )
+
+    await call('/echo', {}, { query: 'foo=bar&foo=baz' })
+
+    expect(fetchMock).toHaveBeenCalledOnce()
+    const url = String(fetchMock.mock.calls[0][0])
+    expect(url).toContain('/echo?foo=bar&foo=baz')
+  })
 })

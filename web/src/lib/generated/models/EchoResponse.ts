@@ -57,6 +57,13 @@ export interface EchoResponse {
      * @memberof EchoResponse
      */
     scheme: EchoResponseSchemeEnum;
+    /**
+     * The request body echoed back verbatim. Null for methods that carry no body (such as GET).
+     * 
+     * @type {string}
+     * @memberof EchoResponse
+     */
+    body?: string | null;
 }
 
 
@@ -99,6 +106,7 @@ export function EchoResponseFromJSONTyped(json: any, ignoreDiscriminator: boolea
         'headers': json['headers'],
         'origin': json['origin'],
         'scheme': json['scheme'],
+        'body': json['body'] == null ? undefined : json['body'],
     };
 }
 
@@ -119,6 +127,7 @@ export function EchoResponseToJSONTyped(value?: EchoResponse | null, ignoreDiscr
         'headers': value['headers'],
         'origin': value['origin'],
         'scheme': value['scheme'],
+        'body': value['body'],
     };
 }
 

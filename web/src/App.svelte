@@ -43,6 +43,8 @@
           description={ep.description}
           expectedStatuses={ep.expectedStatuses}
           params={ep.params}
+          methods={ep.methods}
+          supportsQuery={ep.supportsQuery}
         />
       {/each}
     </main>
