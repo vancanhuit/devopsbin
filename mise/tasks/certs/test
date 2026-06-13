@@ -4,12 +4,14 @@
 #
 # [USAGE] flag "--force" help="Regenerate the certificates even if they already exist"
 #
-# Generates the leaf trio (devopsbin.pem, devopsbin-key.pem, rootCA.pem) for the
-# smoke TLS stack into tls/test, using a throwaway CA that never touches any
+# Generates the server + client leaf set (devopsbin.pem, devopsbin-key.pem,
+# devopsbin-client.pem, devopsbin-client-key.pem, rootCA.pem) for the smoke TLS
+# and mTLS stacks into tls/test, using a throwaway CA that never touches any
 # system trust store -- the smoke probes verify against tls/test/rootCA.pem.
-# This is what `compose:tls:test:up` (driven by `smoke:tls`) depends on, kept
-# separate from the local-dev certs in tls/dev so the disposable CI certs never
-# mix with browser-trusted ones.
+# This is what `compose:tls:test:up` (driven by `smoke:tls`) and
+# `compose:mtls:test:up` (driven by `smoke:mtls`) depend on, kept separate from
+# the local-dev certs in tls/dev so the disposable CI certs never mix with
+# browser-trusted ones.
 #
 # Idempotent: existing certs are left as-is (pass --force to regenerate).
 

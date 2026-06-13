@@ -2,17 +2,22 @@
 # [MISE] description="Install the mkcert dev CA into the system/browser trust store and issue trusted tls/dev certs."
 # [MISE] tools={mkcert="1.4.4"}
 #
-# Convenience for running the local TLS stack in a browser without certificate
-# warnings. Unlike `certs:dev` (which uses a throwaway CA), this:
+# Convenience for running the local TLS/mTLS stacks in a browser without
+# certificate warnings. Unlike `certs:dev` (which uses a throwaway CA), this:
 #
 #   1. runs `mkcert -install` to add the local mkcert CA to the system trust
 #      store (and Firefox/Java stores when present) -- this may prompt for sudo;
-#   2. issues a leaf into tls/dev signed by that now-trusted CA;
+#   2. issues a server leaf and a client leaf into tls/dev signed by that
+#      now-trusted CA;
 #   3. copies the CA to tls/dev/rootCA.pem so --cacert verification still works.
 #
-# After this, https://localhost:8443 and https://localhost:9443 are trusted by
-# your browser. Because `compose:tls:up` -> `certs:dev` is idempotent, these
-# trusted certs survive bringing the stack up. To undo the trust later, run
+# After this, the browser-facing endpoints are trusted by your browser:
+# https://localhost:8443 and https://localhost:9443 (`tls` profile) and
+# https://localhost:9444 (the `mtls` profile's Caddy proxy). Note the mTLS
+# backend itself (https://localhost:8444) requires a client certificate, so a
+# plain browser request to it is rejected by design -- use the 9444 proxy.
+# Because `compose:tls:up`/`compose:mtls:up` -> `certs:dev` is idempotent, these
+# trusted certs survive bringing a stack up. To undo the trust later, run
 # `mkcert -uninstall`.
 
 set -euo pipefail
