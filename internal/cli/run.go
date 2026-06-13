@@ -77,6 +77,11 @@ func newRunCmd() *cli.Command {
 				return err
 			}
 
+			trustedProxies, err := cfg.Http.TrustedProxyPrefixes()
+			if err != nil {
+				return err
+			}
+
 			api := httpapi.NewServer(
 				httpapi.WithLogger(logger),
 				httpapi.WithSPA(web.DistFS(), indexHTML),
@@ -93,6 +98,7 @@ func newRunCmd() *cli.Command {
 				httpapi.WithStartupCheck("postgres", httpapi.PingCheck(db, dependencyCheckTimeout)),
 				httpapi.WithStartupCheck("redis", httpapi.PingCheck(rdb, dependencyCheckTimeout)),
 				httpapi.WithRequestTimeout(cfg.Http.RequestTimeout),
+				httpapi.WithTrustedProxies(trustedProxies),
 			)
 
 			srv := &http.Server{

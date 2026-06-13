@@ -4,6 +4,7 @@ import (
 	"context"
 	"io/fs"
 	"log/slog"
+	"net/netip"
 	"runtime"
 	"time"
 )
@@ -35,6 +36,7 @@ type Server struct {
 	readyChecks    map[string]Check
 	startupChecks  map[string]Check
 	requestTimeout time.Duration
+	trustedProxies []netip.Prefix
 }
 
 // Option configures a Server.
@@ -98,6 +100,15 @@ func WithStartupCheck(name string, c Check) Option {
 func WithRequestTimeout(d time.Duration) Option {
 	return func(s *Server) {
 		s.requestTimeout = d
+	}
+}
+
+// WithTrustedProxies configures the reverse-proxy CIDR prefixes whose
+// forwarded headers are honored. When empty, forwarded headers are ignored and
+// the connecting peer address is authoritative.
+func WithTrustedProxies(prefixes []netip.Prefix) Option {
+	return func(s *Server) {
+		s.trustedProxies = prefixes
 	}
 }
 

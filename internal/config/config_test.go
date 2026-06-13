@@ -27,6 +27,7 @@ var envKeys = []string{
 	"HTTP_REQUEST_TIMEOUT",
 	"HTTP_TLS_CERT_FILE",
 	"HTTP_TLS_KEY_FILE",
+	"HTTP_TRUSTED_PROXIES",
 	"POSTGRES_URL",
 	"REDIS_MODE",
 	"REDIS_ADDRS",
@@ -305,6 +306,58 @@ func TestHttpConfig_TLSEnabled(t *testing.T) {
 				t.Errorf("TLSEnabled() = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestValidate_TrustedProxies(t *testing.T) {
+	base := func() config.Config {
+		return config.Config{
+			App:   config.AppConfig{Environment: config.EnvProd, LogLevel: "info"},
+			Http:  config.HttpConfig{Addr: ":8080", ReadTimeout: time.Second, WriteTimeout: time.Second, IdleTimeout: time.Second, ShutdownTimeout: time.Second, RequestTimeout: time.Second},
+			Redis: config.RedisConfig{Mode: config.RedisStandalone, Addrs: []string{"localhost:6379"}},
+		}
+	}
+
+	tests := []struct {
+		name    string
+		proxies []string
+		wantErr bool
+	}{
+		{"empty", nil, false},
+		{"valid ipv4 cidr", []string{"10.0.0.0/8"}, false},
+		{"valid ipv6 cidr", []string{"::1/128"}, false},
+		{"multiple valid", []string{"10.0.0.0/8", "192.168.0.0/16"}, false},
+		{"invalid cidr", []string{"not-a-cidr"}, true},
+		{"bare ip without prefix", []string{"10.0.0.1"}, true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			c := base()
+			c.Http.TrustedProxies = tc.proxies
+			err := c.Validate()
+			if tc.wantErr && err == nil {
+				t.Errorf("Validate() = nil, want error")
+			}
+			if !tc.wantErr && err != nil {
+				t.Errorf("Validate() = %v, want nil", err)
+			}
+		})
+	}
+}
+
+func TestHttpConfig_TrustedProxyPrefixes(t *testing.T) {
+	h := config.HttpConfig{TrustedProxies: []string{"10.0.0.0/8", "", "192.168.0.0/16"}}
+	got, err := h.TrustedProxyPrefixes()
+	if err != nil {
+		t.Fatalf("TrustedProxyPrefixes() = %v, want nil", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("len(prefixes) = %d, want 2 (empty entries skipped)", len(got))
+	}
+
+	if _, err := (config.HttpConfig{TrustedProxies: []string{"bad"}}).TrustedProxyPrefixes(); err == nil {
+		t.Errorf("TrustedProxyPrefixes() = nil error, want error for malformed CIDR")
 	}
 }
 
