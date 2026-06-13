@@ -17,7 +17,7 @@ ENV MISE_DATA_DIR="/mise"
 ENV MISE_CONFIG_DIR="/mise"
 ENV MISE_CACHE_DIR="/mise/cache"
 ENV MISE_INSTALL_PATH="/usr/local/bin/mise"
-ENV MISE_VERSION="2026.6.3"
+ENV MISE_VERSION="2026.6.5"
 ENV PATH="/mise/shims:$PATH"
 ENV GOPATH="/go"
 

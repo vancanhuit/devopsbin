@@ -61,7 +61,7 @@ mise run smoke:sentinel
   together so they never drift.
 - Treat generated code as read-only build output: don't patch it, and reuse the
   generated types instead of redeclaring request/response shapes by hand.
-- Target OpenAPI 3.1; keep the spec valid and lint-clean before generating.
+- Target OpenAPI 3.0; keep the spec valid and lint-clean before generating.
 - Model the contract explicitly: name every schema, mark `required` fields, set
   `nullable`/formats/enums precisely, and reuse `$ref` components instead of
   duplicating inline shapes.

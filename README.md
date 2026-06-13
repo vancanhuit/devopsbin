@@ -61,9 +61,12 @@ All endpoints live under the `/api/v1` base path. The source of truth is
 | GET    | `/headers`            | Inspect | Echo the request headers.                               |
 | GET    | `/user-agent`         | Inspect | Echo the `User-Agent` header.                           |
 | GET    | `/scheme`             | Inspect | Report `http` or `https` (trusted-proxy aware).         |
-| GET    | `/echo`               | Inspect | Echo method, path, query, headers, origin, and scheme.  |
+| ALL\*  | `/echo`               | Inspect | Echo method, path, query, headers, origin, scheme, and request body. |
 | GET    | `/status/{code}`      | Status  | Return the caller-specified HTTP status code.           |
 | GET    | `/delay/{seconds}`    | Latency | Respond after a bounded artificial delay.               |
+
+\* `/echo` accepts `GET`, `POST`, `PUT`, `PATCH`, and `DELETE`; the body
+methods reflect the request body back.
 
 The root path serves the SPA console; API docs are available via Swagger UI and
 Redoc.
