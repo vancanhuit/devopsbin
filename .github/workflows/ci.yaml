@@ -196,6 +196,12 @@ jobs:
       - name: Smoke test the Compose sentinel profile
         run: mise run smoke:sentinel
 
+      # Generates the mkcert dev certs (via compose:tls:up -> certs:dev) and
+      # exercises both TLS topologies: the binary serving HTTPS directly and the
+      # same binary behind a Caddy reverse proxy that terminates TLS.
+      - name: Smoke test the Compose tls profile
+        run: mise run smoke:tls
+
   # Builds the multi-platform container image. On pull requests it exports an
   # OCI archive (validation, no registry); on pushes to main it pushes the
   # manifest to GHCR. Runs only after the checks above pass.

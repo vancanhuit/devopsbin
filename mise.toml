@@ -145,6 +145,32 @@ run = "docker compose --profile sentinel up -d --wait --build"
 description = "Stop the sentinel-profile Docker Compose services."
 run = "docker compose --profile sentinel down -v"
 
+[tasks."compose:tls:up"]
+description = "Start the tls-profile stack (direct-HTTPS api + Caddy reverse proxy)."
+# Generate the mkcert dev certs first; compose mounts tls/dev read-only into
+# the api and Caddy services. VERSION/COMMIT/BUILD_TIME come from [env] and are
+# interpolated by compose.yaml into the Docker build args.
+depends = ["certs:dev"]
+run = "docker compose --profile tls up -d --wait --build"
+
+[tasks."compose:tls:down"]
+description = "Stop the tls-profile Docker Compose services."
+run = "docker compose --profile tls down -v"
+
+[tasks."compose:tls:test:up"]
+description = "Start the tls-profile stack with disposable smoke-test certs (tls/test)."
+# Same stack as compose:tls:up, but driven by smoke:tls: generate ephemeral
+# certs into tls/test and point compose's cert mounts there via TLS_CERTS_DIR
+# so the disposable CI certs never mix with browser-trusted tls/dev certs.
+depends = ["certs:test"]
+env.TLS_CERTS_DIR = "./tls/test"
+run = "docker compose --profile tls up -d --wait --build"
+
+[tasks."compose:tls:test:down"]
+description = "Stop the tls-profile Docker Compose services started for smoke tests."
+env.TLS_CERTS_DIR = "./tls/test"
+run = "docker compose --profile tls down -v"
+
 [tasks."docker:hadolint"]
 description = "Run hadolint on the Dockerfile."
 tools = { hadolint = "2.14.0" }

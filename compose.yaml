@@ -327,8 +327,108 @@ services:
     networks:
       - sentinel
 
+  # --- tls profile: direct-HTTPS api + Caddy-terminated reverse proxy ---------
+  # Exercises two TLS topologies against the same binary: api-tls-direct serves
+  # HTTPS itself (cert/key from config), while api-tls-proxied stays plain HTTP
+  # behind Caddy, which terminates TLS and forwards X-Forwarded-* headers. The
+  # network pins an explicit subnet and Caddy a static address so the proxied
+  # api can trust exactly that peer via HTTP_TRUSTED_PROXIES.
+  postgres-tls:
+    <<: *postgres-base
+    profiles:
+      - tls
+    networks:
+      - tls
+  redis-tls:
+    <<: *redis-base
+    profiles:
+      - tls
+    networks:
+      - tls
+
+  api-tls-direct:
+    <<: *api-base
+    profiles:
+      - tls
+    environment:
+      POSTGRES_URL: postgres://devopsbin:devopsbin@postgres-tls:5432/devopsbin?sslmode=disable
+      REDIS_MODE: standalone
+      REDIS_ADDRS: redis-tls:6379
+      HTTP_ADDR: ":8443"
+      HTTP_TLS_CERT_FILE: /certs/devopsbin.pem
+      HTTP_TLS_KEY_FILE: /certs/devopsbin-key.pem
+    volumes:
+      # tls/dev for the local `compose:tls:up` stack; smoke overrides this to
+      # tls/test via TLS_CERTS_DIR (see `compose:tls:test:up`).
+      - ${TLS_CERTS_DIR:-./tls/dev}:/certs:ro
+    ports:
+      - "8443:8443"
+    # The image's default healthcheck probes plain HTTP on :8080; override it to
+    # verify the chain against the mkcert CA, mirroring production behaviour with
+    # a private CA (no -insecure).
+    healthcheck:
+      test:
+        - CMD
+        - /devopsbin
+        - healthcheck
+        - --url
+        - https://127.0.0.1:8443/api/v1/livez
+        - --cacert
+        - /certs/rootCA.pem
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      postgres-tls:
+        condition: service_healthy
+      redis-tls:
+        condition: service_healthy
+    networks:
+      - tls
+
+  api-tls-proxied:
+    <<: *api-base
+    profiles:
+      - tls
+    environment:
+      POSTGRES_URL: postgres://devopsbin:devopsbin@postgres-tls:5432/devopsbin?sslmode=disable
+      REDIS_MODE: standalone
+      REDIS_ADDRS: redis-tls:6379
+      # Trust only Caddy's static address (below). Forwarded headers from any
+      # other peer are ignored, so a direct caller cannot spoof its client IP.
+      HTTP_TRUSTED_PROXIES: 172.16.7.10/32
+    depends_on:
+      postgres-tls:
+        condition: service_healthy
+      redis-tls:
+        condition: service_healthy
+    # No host port: reachable only through Caddy.
+    networks:
+      - tls
+
+  caddy:
+    image: caddy:2.11.4
+    profiles:
+      - tls
+    volumes:
+      - ./tls/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${TLS_CERTS_DIR:-./tls/dev}:/certs:ro
+    ports:
+      - "9443:443"
+    depends_on:
+      api-tls-proxied:
+        condition: service_healthy
+    networks:
+      tls:
+        ipv4_address: 172.16.7.10
+
 networks:
   test:
   dev:
   cluster:
   sentinel:
+  tls:
+    ipam:
+      config:
+        - subnet: 172.16.7.0/24

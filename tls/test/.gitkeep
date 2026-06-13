@@ -1,0 +1,3 @@
+# Keeps tls/test under version control. The TLS material itself (tls/test/*.pem)
+# is generated locally by `mise run certs:test` (ephemeral CA, used by the
+# smoke:tls task) and is gitignored.

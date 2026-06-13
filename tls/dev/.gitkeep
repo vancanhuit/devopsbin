@@ -1,0 +1,3 @@
+# Keeps tls/dev under version control. The TLS material itself (tls/dev/*.pem)
+# is generated locally by `mise run certs:dev` (or `certs:install` for
+# browser-trusted certs) and is gitignored.

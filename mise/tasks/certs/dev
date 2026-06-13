@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# [MISE] description="Generate ephemeral local-dev TLS certificates with mkcert into tls/dev."
+# [MISE] tools={mkcert="1.4.4"}
+#
+# [USAGE] flag "--force" help="Regenerate the certificates even if they already exist"
+#
+# Generates the leaf trio (devopsbin.pem, devopsbin-key.pem, rootCA.pem) for the
+# local TLS stack into tls/dev, using a throwaway CA that never touches any
+# system trust store -- the stack and probes verify against tls/dev/rootCA.pem.
+# This is what `compose:tls:up` depends on, so the local stack works with no
+# sudo and unchanged in CI.
+#
+# Idempotent: existing certs are left as-is (pass --force to regenerate). That
+# lets `certs:install` lay down browser-trusted certs in tls/dev and have them
+# survive a later `compose:tls:up`. For browser-trusted certs, run
+# `mise run certs:install` instead.
+
+set -euo pipefail
+IFS=$'\n\t'
+
+# shellcheck source-path=SCRIPTDIR
+# shellcheck source=../../lib/certs.sh
+source "${MISE_PROJECT_ROOT:?}/mise/lib/certs.sh"
+
+gen_ephemeral_certs "${MISE_PROJECT_ROOT}/tls/dev" "${usage_force:-false}"

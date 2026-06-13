@@ -21,8 +21,10 @@ Examples:
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import re
+import ssl
 import sys
 import time
 import urllib.error
@@ -31,6 +33,30 @@ from dataclasses import dataclass
 
 DEFAULT_BASE_URL = "http://127.0.0.1:8080"
 API_PREFIX = "/api/v1"
+
+# Optional TLS verification context, shared by every request. When set (via
+# use_ca_cert), HTTPS requests verify the server certificate against the given
+# CA bundle with hostname checking ON, mirroring production behaviour with a
+# private CA. It stays None for plain-HTTP stacks.
+_SSL_CONTEXT: ssl.SSLContext | None = None
+
+
+def use_ca_cert(ca_cert: str | None) -> None:
+    """Install a CA bundle used to verify HTTPS server certificates.
+
+    Passing None (the default) leaves requests on the system default, which is
+    only used for plain-HTTP stacks. The context keeps full chain and hostname
+    verification enabled -- there is deliberately no insecure fallback.
+    """
+    global _SSL_CONTEXT
+    if not ca_cert:
+        _SSL_CONTEXT = None
+        return
+    ctx = ssl.create_default_context(cafile=ca_cert)
+    ctx.check_hostname = True
+    ctx.verify_mode = ssl.CERT_REQUIRED
+    _SSL_CONTEXT = ctx
+
 
 # RFC 4122 version 4 UUID (any variant nibble 8-b in the documented range).
 UUID_V4_RE = re.compile(
@@ -111,11 +137,12 @@ def http_get(
     req = urllib.request.Request(url, method="GET")
     for name, value in (headers or {}).items():
         req.add_header(name, value)
-    opener = (
-        urllib.request.build_opener()
-        if follow_redirects
-        else urllib.request.build_opener(_NoRedirect)
-    )
+    handlers: list[urllib.request.BaseHandler] = []
+    if not follow_redirects:
+        handlers.append(_NoRedirect())
+    if _SSL_CONTEXT is not None:
+        handlers.append(urllib.request.HTTPSHandler(context=_SSL_CONTEXT))
+    opener = urllib.request.build_opener(*handlers)
     try:
         with opener.open(req, timeout=timeout) as resp:  # noqa: S310 (loopback only)
             response = Response(
@@ -444,6 +471,97 @@ def run_checks(base_url: str, timeout: float) -> None:
     check_docs_ui(base_url, "/redoc", "redoc")
 
 
+# An IP that is never a real peer in the stack; used to prove that a spoofed
+# X-Forwarded-For is ignored when the caller is not a trusted proxy.
+SPOOFED_FORWARDED_FOR = "203.0.113.99"
+
+
+def _is_ip(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    try:
+        ipaddress.ip_address(value)
+    except ValueError:
+        return False
+    return True
+
+
+def check_forwarded_ignored(base_url: str) -> None:
+    """A direct caller's X-Forwarded-For must be ignored (no trusted proxy).
+
+    The api-tls-direct service configures no trusted proxies, so a forged
+    X-Forwarded-For header must not influence the reported origin -- it should
+    reflect the real connecting peer instead.
+    """
+    resp = http_get(
+        f"{base_url}{API_PREFIX}/ip",
+        timeout=5.0,
+        headers={"X-Forwarded-For": SPOOFED_FORWARDED_FOR},
+    )
+    expect(resp.status == 200, f"ip(spoof): status {resp.status}, want 200")
+    body = resp.json()
+    origin = body.get("origin") if isinstance(body, dict) else None
+    expect(_is_ip(origin), f"ip(spoof): origin {origin!r}, want an IP address")
+    expect(
+        origin != SPOOFED_FORWARDED_FOR,
+        f"ip(spoof): origin {origin!r} must not honor a spoofed "
+        f"X-Forwarded-For from an untrusted caller",
+    )
+    print("[ok] /ip ignores spoofed X-Forwarded-For from an untrusted caller")
+
+
+def check_forwarded_honored(base_url: str, proxy_ip: str) -> None:
+    """Behind a trusted proxy, the real client and scheme must be recovered.
+
+    Caddy terminates TLS and forwards X-Forwarded-For / X-Forwarded-Proto to
+    api-tls-proxied, which trusts Caddy's address. The reported origin must be
+    the forwarded client (not Caddy's own address), and the reflected
+    X-Forwarded-Proto must show the original https scheme.
+    """
+    ip_resp = http_get(f"{base_url}{API_PREFIX}/ip", timeout=5.0)
+    expect(ip_resp.status == 200, f"ip(proxied): status {ip_resp.status}, want 200")
+    ip_body = ip_resp.json()
+    origin = ip_body.get("origin") if isinstance(ip_body, dict) else None
+    expect(_is_ip(origin), f"ip(proxied): origin {origin!r}, want an IP address")
+    expect(
+        origin != proxy_ip,
+        f"ip(proxied): origin {origin!r} equals the proxy address {proxy_ip!r}; "
+        f"the forwarded client IP was not honored",
+    )
+
+    hdr_resp = http_get(f"{base_url}{API_PREFIX}/headers", timeout=5.0)
+    expect(
+        hdr_resp.status == 200, f"headers(proxied): status {hdr_resp.status}, want 200"
+    )
+    hdr_body = hdr_resp.json()
+    headers = hdr_body.get("headers") if isinstance(hdr_body, dict) else None
+    expect(
+        isinstance(headers, dict), f"headers(proxied): headers {headers!r}, want object"
+    )
+    proto = headers.get("X-Forwarded-Proto")
+    expect(
+        isinstance(proto, list) and "https" in proto,
+        f"headers(proxied): X-Forwarded-Proto {proto!r}, want list containing 'https'",
+    )
+    print(
+        f"[ok] /ip honors the forwarded client ({origin}) and X-Forwarded-Proto=https"
+    )
+
+
+def run_tls_checks(
+    direct_url: str, proxied_url: str, proxy_ip: str, timeout: float
+) -> None:
+    """Probe both TLS topologies: direct HTTPS and the Caddy-proxied path."""
+    print(f"\n== Direct HTTPS: {direct_url} ==")
+    run_checks(direct_url, timeout)
+    check_forwarded_ignored(direct_url)
+
+    print(f"\n== Proxied (Caddy TLS termination): {proxied_url} ==")
+    wait_for_api(proxied_url, timeout)
+    check_livez(proxied_url)
+    check_forwarded_honored(proxied_url, proxy_ip)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -459,11 +577,65 @@ def main(argv: list[str] | None = None) -> int:
         default=120.0,
         help="seconds to wait for the API (default: %(default)s)",
     )
+    parser.add_argument(
+        "--ca-cert",
+        default=None,
+        help="PEM CA bundle to verify the server certificate for https URLs",
+    )
     args = parser.parse_args(argv)
 
     try:
+        use_ca_cert(args.ca_cert)
         run_checks(args.base_url, args.timeout)
         print("\nAll smoke checks passed.")
+        return 0
+    except SmokeError as exc:
+        print(f"\nSMOKE FAILED: {exc}", file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:
+        print("\nInterrupted.", file=sys.stderr)
+        return 130
+
+
+def main_tls(argv: list[str] | None = None) -> int:
+    """Entry point for the TLS smoke task: direct HTTPS + Caddy-proxied paths."""
+    parser = argparse.ArgumentParser(
+        description=run_tls_checks.__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "--direct-url",
+        default="https://localhost:8443",
+        help="direct-HTTPS api base URL (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--proxied-url",
+        default="https://localhost:9443",
+        help="Caddy-terminated proxied base URL (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--proxy-ip",
+        default="172.16.7.10",
+        help="Caddy's trusted address, which must NOT appear as the proxied "
+        "origin (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--ca-cert",
+        required=True,
+        help="PEM CA bundle to verify the mkcert-issued server certificates",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=120.0,
+        help="seconds to wait for each API (default: %(default)s)",
+    )
+    args = parser.parse_args(argv)
+
+    try:
+        use_ca_cert(args.ca_cert)
+        run_tls_checks(args.direct_url, args.proxied_url, args.proxy_ip, args.timeout)
+        print("\nAll TLS smoke checks passed.")
         return 0
     except SmokeError as exc:
         print(f"\nSMOKE FAILED: {exc}", file=sys.stderr)
