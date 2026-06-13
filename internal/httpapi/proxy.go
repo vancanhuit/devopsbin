@@ -17,9 +17,9 @@ const xForwardedForHeader = "X-Forwarded-For"
 // peer prevents a client connecting directly from spoofing its address with a
 // forged header.
 //
-// The resolved IP is stored in the request context and read by clientIP. When
-// no prefixes are configured, or the peer is not trusted, the middleware is a
-// no-op and the peer address remains authoritative.
+// The resolved IP is stored in the request context and read by clientIPFrom.
+// When no prefixes are configured, or the peer is not trusted, the middleware
+// is a no-op and the peer address remains authoritative.
 func trustedProxy(prefixes []netip.Prefix) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
