@@ -60,6 +60,7 @@ const rawCalls = {
   '/ip': () => inspect.getIpRaw(),
   '/headers': () => inspect.getHeadersRaw(),
   '/user-agent': () => inspect.getUserAgentRaw(),
+  '/scheme': () => inspect.getSchemeRaw(),
   '/echo': () => inspect.getEchoRaw(),
   '/status/{code}': (args: CallArgs) => status.getStatusRaw({ code: Number(args.code) }),
   '/delay/{seconds}': (args: CallArgs) => latency.getDelayRaw({ seconds: Number(args.seconds) }),
@@ -159,9 +160,16 @@ export const endpoints: readonly Endpoint[] = [
   },
   {
     method: 'GET',
+    path: '/scheme',
+    title: 'Scheme',
+    description: 'Returns the request scheme (http or https), honoring trusted-proxy forwarding.',
+    expectedStatuses: [200],
+  },
+  {
+    method: 'GET',
     path: '/echo',
     title: 'Echo',
-    description: 'Reflects the request method, path, query, headers, and origin IP.',
+    description: 'Reflects the request method, path, query, headers, origin IP, and scheme.',
     expectedStatuses: [200],
   },
   {

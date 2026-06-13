@@ -345,7 +345,12 @@ def check_echo(base_url: str) -> None:
         isinstance(origin, str) and origin != "",
         f"echo: origin {origin!r}, want non-empty string",
     )
-    print("[ok] echo -> 200 (reflects method, path, query, headers, origin)")
+    scheme = body.get("scheme")
+    expect(
+        scheme in ("http", "https"),
+        f"echo: scheme {scheme!r}, want 'http' or 'https'",
+    )
+    print("[ok] echo -> 200 (reflects method, path, query, headers, origin, scheme)")
 
 
 def check_status(base_url: str) -> None:
@@ -449,7 +454,7 @@ def check_docs_ui(base_url: str, prefix: str, marker: str) -> None:
     print(f"[ok] {prefix} -> 301 -> {prefix}/ 200 text/html")
 
 
-def run_checks(base_url: str, timeout: float) -> None:
+def run_checks(base_url: str, timeout: float, expected_scheme: str = "http") -> None:
     """Run the full probe suite against a running stack."""
     print(f"Waiting for API at {base_url} ...")
     wait_for_api(base_url, timeout)
@@ -462,6 +467,7 @@ def run_checks(base_url: str, timeout: float) -> None:
     check_ip(base_url)
     check_headers(base_url)
     check_user_agent(base_url)
+    check_scheme(base_url, expected_scheme)
     check_echo(base_url)
     check_status(base_url)
     check_delay(base_url)
@@ -548,18 +554,34 @@ def check_forwarded_honored(base_url: str, proxy_ip: str) -> None:
     )
 
 
+def check_scheme(base_url: str, want: str) -> None:
+    """The /scheme endpoint must report the expected request scheme.
+
+    On the direct path the server terminates TLS, so it observes https itself;
+    on the proxied path Caddy terminates TLS and forwards X-Forwarded-Proto,
+    which the trusted-proxy handling recovers as https.
+    """
+    resp = http_get(f"{base_url}{API_PREFIX}/scheme", timeout=5.0)
+    expect(resp.status == 200, f"scheme: status {resp.status}, want 200")
+    body = resp.json()
+    scheme = body.get("scheme") if isinstance(body, dict) else None
+    expect(scheme == want, f"scheme: got {scheme!r}, want {want!r}")
+    print(f"[ok] /scheme reports {want}")
+
+
 def run_tls_checks(
     direct_url: str, proxied_url: str, proxy_ip: str, timeout: float
 ) -> None:
     """Probe both TLS topologies: direct HTTPS and the Caddy-proxied path."""
     print(f"\n== Direct HTTPS: {direct_url} ==")
-    run_checks(direct_url, timeout)
+    run_checks(direct_url, timeout, expected_scheme="https")
     check_forwarded_ignored(direct_url)
 
     print(f"\n== Proxied (Caddy TLS termination): {proxied_url} ==")
     wait_for_api(proxied_url, timeout)
     check_livez(proxied_url)
     check_forwarded_honored(proxied_url, proxy_ip)
+    check_scheme(proxied_url, "https")
 
 
 def main(argv: list[str] | None = None) -> int:

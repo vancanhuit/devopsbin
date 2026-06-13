@@ -8,6 +8,7 @@ export * from './HeadersResponse';
 export * from './IpResponse';
 export * from './LivezResponse';
 export * from './ReadyzResponse';
+export * from './SchemeResponse';
 export * from './StartupzResponse';
 export * from './StatusResponse';
 export * from './UserAgentResponse';

@@ -1,6 +1,7 @@
 package httpapi_test
 
 import (
+	"crypto/tls"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -139,5 +140,41 @@ func TestGetEcho(t *testing.T) {
 	}
 	if got := body.Headers["X-Custom-Header"]; len(got) != 1 || got[0] != "demo-value" {
 		t.Errorf("headers[X-Custom-Header] = %v, want [demo-value]", got)
+	}
+	if body.Scheme != httpapi.EchoResponseSchemeHttp {
+		t.Errorf("scheme = %q, want %q (plain HTTP request)", body.Scheme, httpapi.EchoResponseSchemeHttp)
+	}
+}
+
+func TestGetScheme(t *testing.T) {
+	h := httpapi.NewServer().Handler()
+
+	rec := doGet(t, h, "/api/v1/scheme")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
+		t.Errorf("Content-Type = %q, want application/json", ct)
+	}
+	body := decode[httpapi.SchemeResponse](t, rec)
+	if body.Scheme != httpapi.SchemeResponseSchemeHttp {
+		t.Errorf("scheme = %q, want %q (plain HTTP request)", body.Scheme, httpapi.SchemeResponseSchemeHttp)
+	}
+}
+
+func TestGetScheme_HTTPSWhenTLS(t *testing.T) {
+	h := httpapi.NewServer().Handler()
+
+	rec := doGetWith(t, h, "/api/v1/scheme", func(r *http.Request) {
+		r.TLS = &tls.ConnectionState{} // simulate a TLS-terminated connection
+	})
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	body := decode[httpapi.SchemeResponse](t, rec)
+	if body.Scheme != httpapi.SchemeResponseSchemeHttps {
+		t.Errorf("scheme = %q, want %q (TLS connection)", body.Scheme, httpapi.SchemeResponseSchemeHttps)
 	}
 }

@@ -14,6 +14,7 @@ docs/LatencyApi.md
 docs/LivezResponse.md
 docs/ReadyzResponse.md
 docs/RuntimeApi.md
+docs/SchemeResponse.md
 docs/StartupzResponse.md
 docs/StatusApi.md
 docs/StatusResponse.md
@@ -29,6 +30,7 @@ models/HeadersResponse.ts
 models/IpResponse.ts
 models/LivezResponse.ts
 models/ReadyzResponse.ts
+models/SchemeResponse.ts
 models/StartupzResponse.ts
 models/StatusResponse.ts
 models/UserAgentResponse.ts

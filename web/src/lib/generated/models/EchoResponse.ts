@@ -51,7 +51,24 @@ export interface EchoResponse {
      * @memberof EchoResponse
      */
     origin: string;
+    /**
+     * The scheme (http or https) of the incoming request.
+     * @type {EchoResponseSchemeEnum}
+     * @memberof EchoResponse
+     */
+    scheme: EchoResponseSchemeEnum;
 }
+
+
+/**
+ * @export
+ */
+export const EchoResponseSchemeEnum = {
+    http: 'http',
+    https: 'https'
+} as const;
+export type EchoResponseSchemeEnum = typeof EchoResponseSchemeEnum[keyof typeof EchoResponseSchemeEnum];
+
 
 /**
  * Check if a given object implements the EchoResponse interface.
@@ -62,6 +79,7 @@ export function instanceOfEchoResponse(value: object): value is EchoResponse {
     if (!('query' in value) || value['query'] === undefined) return false;
     if (!('headers' in value) || value['headers'] === undefined) return false;
     if (!('origin' in value) || value['origin'] === undefined) return false;
+    if (!('scheme' in value) || value['scheme'] === undefined) return false;
     return true;
 }
 
@@ -80,6 +98,7 @@ export function EchoResponseFromJSONTyped(json: any, ignoreDiscriminator: boolea
         'query': json['query'],
         'headers': json['headers'],
         'origin': json['origin'],
+        'scheme': json['scheme'],
     };
 }
 
@@ -99,6 +118,7 @@ export function EchoResponseToJSONTyped(value?: EchoResponse | null, ignoreDiscr
         'query': value['query'],
         'headers': value['headers'],
         'origin': value['origin'],
+        'scheme': value['scheme'],
     };
 }
 

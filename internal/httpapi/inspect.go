@@ -33,16 +33,27 @@ func (s *Server) GetUserAgent(ctx context.Context, _ GetUserAgentRequestObject) 
 	return GetUserAgent200JSONResponse{UserAgent: ua}, nil
 }
 
+// GetScheme implements the /scheme endpoint, returning the request scheme
+// (http or https).
+func (s *Server) GetScheme(ctx context.Context, _ GetSchemeRequestObject) (GetSchemeResponseObject, error) {
+	return GetScheme200JSONResponse{Scheme: SchemeResponseScheme(requestScheme(requestFrom(ctx)))}, nil
+}
+
 // GetEcho implements the /echo endpoint, reflecting the incoming request's
-// method, path, query parameters, headers, and origin IP.
+// method, path, query parameters, headers, origin IP, and scheme.
 func (s *Server) GetEcho(ctx context.Context, _ GetEchoRequestObject) (GetEchoResponseObject, error) {
-	resp := GetEcho200JSONResponse{Headers: HeaderMap{}, Query: HeaderMap{}}
+	resp := GetEcho200JSONResponse{
+		Headers: HeaderMap{},
+		Query:   HeaderMap{},
+		Scheme:  EchoResponseSchemeHttp,
+	}
 	if r := requestFrom(ctx); r != nil {
 		resp.Method = r.Method
 		resp.Path = r.URL.Path
 		resp.Query = HeaderMap(r.URL.Query())
 		resp.Headers = headerMap(r)
 		resp.Origin = originIP(r)
+		resp.Scheme = EchoResponseScheme(requestScheme(r))
 	}
 	return resp, nil
 }
@@ -76,4 +87,21 @@ func originIP(r *http.Request) string {
 		return host
 	}
 	return r.RemoteAddr
+}
+
+// requestScheme returns the scheme ("http" or "https") of the request. When a
+// trusted proxy resolved the forwarded scheme (see trustedProxy), that value
+// is used; otherwise it reflects whether this server terminated TLS for the
+// connection. A nil request defaults to "http".
+func requestScheme(r *http.Request) string {
+	if r == nil {
+		return "http"
+	}
+	if scheme, ok := schemeFrom(r.Context()); ok {
+		return scheme
+	}
+	if r.TLS != nil {
+		return "https"
+	}
+	return "http"
 }

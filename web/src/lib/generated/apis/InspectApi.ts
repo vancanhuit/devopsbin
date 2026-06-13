@@ -29,6 +29,11 @@ import {
     IpResponseToJSON,
 } from '../models/IpResponse';
 import {
+    type SchemeResponse,
+    SchemeResponseFromJSON,
+    SchemeResponseToJSON,
+} from '../models/SchemeResponse';
+import {
     type UserAgentResponse,
     UserAgentResponseFromJSON,
     UserAgentResponseToJSON,
@@ -54,7 +59,7 @@ export interface InspectApiInterface {
     getEchoRequestOpts(): Promise<runtime.RequestOpts>;
 
     /**
-     * Returns details of the incoming request: HTTP method, path, query parameters, headers, and origin IP address. 
+     * Returns details of the incoming request: HTTP method, path, query parameters, headers, origin IP address, and scheme. 
      * @summary Echo the incoming request
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
@@ -63,7 +68,7 @@ export interface InspectApiInterface {
     getEchoRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<EchoResponse>>;
 
     /**
-     * Returns details of the incoming request: HTTP method, path, query parameters, headers, and origin IP address. 
+     * Returns details of the incoming request: HTTP method, path, query parameters, headers, origin IP address, and scheme. 
      * Echo the incoming request
      */
     getEcho(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EchoResponse>;
@@ -111,6 +116,28 @@ export interface InspectApiInterface {
      * Return the caller\'s IP address
      */
     getIp(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<IpResponse>;
+
+    /**
+     * Creates request options for getScheme without sending the request
+     * @throws {RequiredError}
+     * @memberof InspectApiInterface
+     */
+    getSchemeRequestOpts(): Promise<runtime.RequestOpts>;
+
+    /**
+     * Returns the scheme (http or https) of the incoming request. When the request arrives through a trusted proxy, the scheme is taken from the X-Forwarded-Proto header; otherwise it reflects whether this server terminated TLS for the connection. 
+     * @summary Return the request scheme
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof InspectApiInterface
+     */
+    getSchemeRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SchemeResponse>>;
+
+    /**
+     * Returns the scheme (http or https) of the incoming request. When the request arrives through a trusted proxy, the scheme is taken from the X-Forwarded-Proto header; otherwise it reflects whether this server terminated TLS for the connection. 
+     * Return the request scheme
+     */
+    getScheme(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SchemeResponse>;
 
     /**
      * Creates request options for getUserAgent without sending the request
@@ -183,7 +210,7 @@ export class InspectApi extends runtime.BaseAPI implements InspectApiInterface {
     }
 
     /**
-     * Returns details of the incoming request: HTTP method, path, query parameters, headers, and origin IP address. 
+     * Returns details of the incoming request: HTTP method, path, query parameters, headers, origin IP address, and scheme. 
      * Echo the incoming request
      */
     async getEchoRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<EchoResponse>> {
@@ -194,7 +221,7 @@ export class InspectApi extends runtime.BaseAPI implements InspectApiInterface {
     }
 
     /**
-     * Returns details of the incoming request: HTTP method, path, query parameters, headers, and origin IP address. 
+     * Returns details of the incoming request: HTTP method, path, query parameters, headers, origin IP address, and scheme. 
      * Echo the incoming request
      */
     async getEcho(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EchoResponse> {
@@ -277,6 +304,45 @@ export class InspectApi extends runtime.BaseAPI implements InspectApiInterface {
      */
     async getIp(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<IpResponse> {
         const response = await this.getIpRaw(initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for getScheme without sending the request
+     */
+    async getSchemeRequestOpts(): Promise<runtime.RequestOpts> {
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/scheme`;
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Returns the scheme (http or https) of the incoming request. When the request arrives through a trusted proxy, the scheme is taken from the X-Forwarded-Proto header; otherwise it reflects whether this server terminated TLS for the connection. 
+     * Return the request scheme
+     */
+    async getSchemeRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SchemeResponse>> {
+        const requestOptions = await this.getSchemeRequestOpts();
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => SchemeResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Returns the scheme (http or https) of the incoming request. When the request arrives through a trusted proxy, the scheme is taken from the X-Forwarded-Proto header; otherwise it reflects whether this server terminated TLS for the connection. 
+     * Return the request scheme
+     */
+    async getScheme(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SchemeResponse> {
+        const response = await this.getSchemeRaw(initOverrides);
         return await response.value();
     }
 
