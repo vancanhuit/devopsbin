@@ -14,7 +14,6 @@ import (
 // them so each test starts from a known, default state regardless of the
 // ambient environment.
 var envKeys = []string{
-	"APP_ENV",
 	"APP_VERSION",
 	"APP_GIT_SHA",
 	"APP_BUILD_TIME",
@@ -59,9 +58,6 @@ func TestLoad_Defaults(t *testing.T) {
 		t.Fatalf("Load(): %v", err)
 	}
 
-	if cfg.App.Environment != config.EnvProd {
-		t.Errorf("App.Environment = %q, want %q", cfg.App.Environment, config.EnvProd)
-	}
 	if cfg.App.Version != "dev" {
 		t.Errorf("App.Version = %q, want dev", cfg.App.Version)
 	}
@@ -102,7 +98,6 @@ func TestLoad_Defaults(t *testing.T) {
 
 func TestLoad_EnvOverrides(t *testing.T) {
 	clearEnv(t)
-	t.Setenv("APP_ENV", "dev")
 	t.Setenv("APP_VERSION", "1.2.3")
 	t.Setenv("APP_GIT_SHA", "abc123")
 	t.Setenv("APP_BUILD_TIME", "2026-06-06T10:00:00Z")
@@ -127,11 +122,10 @@ func TestLoad_EnvOverrides(t *testing.T) {
 
 	want := config.Config{
 		App: config.AppConfig{
-			Environment: "dev",
-			Version:     "1.2.3",
-			GitSHA:      "abc123",
-			BuildTime:   "2026-06-06T10:00:00Z",
-			LogLevel:    "debug",
+			Version:   "1.2.3",
+			GitSHA:    "abc123",
+			BuildTime: "2026-06-06T10:00:00Z",
+			LogLevel:  "debug",
 		},
 		Http: config.HttpConfig{
 			Addr:            ":9000",
@@ -155,15 +149,6 @@ func TestLoad_EnvOverrides(t *testing.T) {
 	}
 }
 
-func TestLoad_InvalidEnv(t *testing.T) {
-	clearEnv(t)
-	t.Setenv("APP_ENV", "staging")
-
-	if _, err := config.Load(); err == nil {
-		t.Fatal("Load(): expected error for invalid env, got nil")
-	}
-}
-
 func TestLoad_InvalidLogLevel(t *testing.T) {
 	clearEnv(t)
 	t.Setenv("APP_LOG_LEVEL", "verbose")
@@ -176,7 +161,7 @@ func TestLoad_InvalidLogLevel(t *testing.T) {
 func TestValidate(t *testing.T) {
 	base := func() config.Config {
 		return config.Config{
-			App:   config.AppConfig{Environment: config.EnvProd, LogLevel: "info"},
+			App:   config.AppConfig{LogLevel: "info"},
 			Http:  config.HttpConfig{Addr: ":8080", ReadTimeout: time.Second, WriteTimeout: time.Second, IdleTimeout: time.Second, ShutdownTimeout: time.Second, RequestTimeout: time.Second},
 			Redis: config.RedisConfig{Mode: config.RedisStandalone, Addrs: []string{"localhost:6379"}},
 		}
@@ -194,7 +179,6 @@ func TestValidate(t *testing.T) {
 		{"zero idle timeout", func(c *config.Config) { c.Http.IdleTimeout = 0 }, true},
 		{"zero shutdown timeout", func(c *config.Config) { c.Http.ShutdownTimeout = 0 }, true},
 		{"zero request timeout", func(c *config.Config) { c.Http.RequestTimeout = 0 }, true},
-		{"bad env", func(c *config.Config) { c.App.Environment = "qa" }, true},
 		{"bad log level", func(c *config.Config) { c.App.LogLevel = "trace" }, true},
 		{"invalid postgres url", func(c *config.Config) { c.Postgres.URL = "://bad" }, true},
 		{"invalid redis mode", func(c *config.Config) { c.Redis.Mode = "proxy" }, true},
@@ -251,7 +235,7 @@ func TestValidate_TLS(t *testing.T) {
 
 	base := func() config.Config {
 		return config.Config{
-			App:   config.AppConfig{Environment: config.EnvProd, LogLevel: "info"},
+			App:   config.AppConfig{LogLevel: "info"},
 			Http:  config.HttpConfig{Addr: ":8080", ReadTimeout: time.Second, WriteTimeout: time.Second, IdleTimeout: time.Second, ShutdownTimeout: time.Second, RequestTimeout: time.Second},
 			Redis: config.RedisConfig{Mode: config.RedisStandalone, Addrs: []string{"localhost:6379"}},
 		}
@@ -312,7 +296,7 @@ func TestHttpConfig_TLSEnabled(t *testing.T) {
 func TestValidate_TrustedProxies(t *testing.T) {
 	base := func() config.Config {
 		return config.Config{
-			App:   config.AppConfig{Environment: config.EnvProd, LogLevel: "info"},
+			App:   config.AppConfig{LogLevel: "info"},
 			Http:  config.HttpConfig{Addr: ":8080", ReadTimeout: time.Second, WriteTimeout: time.Second, IdleTimeout: time.Second, ShutdownTimeout: time.Second, RequestTimeout: time.Second},
 			Redis: config.RedisConfig{Mode: config.RedisStandalone, Addrs: []string{"localhost:6379"}},
 		}

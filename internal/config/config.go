@@ -3,7 +3,7 @@
 // All settings come from environment variables (12-factor style), grouped by a
 // per-section prefix: APP_, HTTP_, POSTGRES_, and REDIS_ (for example
 // HTTP_ADDR or REDIS_MODE). Defaults are tuned for production; local
-// development overrides them via the environment.
+// development overrides individual variables via the environment.
 package config
 
 import (
@@ -18,12 +18,6 @@ import (
 	"github.com/caarlos0/env/v11"
 )
 
-// Environment values.
-const (
-	EnvDev  = "dev"
-	EnvProd = "prod"
-)
-
 // RedisMode selects the Redis client topology.
 type RedisMode string
 
@@ -35,11 +29,10 @@ const (
 )
 
 type AppConfig struct {
-	Environment string `env:"ENV" envDefault:"prod" json:"environment"`
-	Version     string `env:"VERSION" envDefault:"dev" json:"version"`
-	GitSHA      string `env:"GIT_SHA" envDefault:"none" json:"git_sha"`
-	BuildTime   string `env:"BUILD_TIME" envDefault:"none" json:"build_time"`
-	LogLevel    string `env:"LOG_LEVEL" envDefault:"info" json:"log_level"`
+	Version   string `env:"VERSION" envDefault:"dev" json:"version"`
+	GitSHA    string `env:"GIT_SHA" envDefault:"none" json:"git_sha"`
+	BuildTime string `env:"BUILD_TIME" envDefault:"none" json:"build_time"`
+	LogLevel  string `env:"LOG_LEVEL" envDefault:"info" json:"log_level"`
 }
 
 type HttpConfig struct {
@@ -133,12 +126,6 @@ func Load() (Config, error) {
 
 // Validate returns a non-nil error when c contains an invalid setting.
 func (c Config) Validate() error {
-	switch c.App.Environment {
-	case EnvDev, EnvProd:
-	default:
-		return fmt.Errorf("config: invalid env %q (want %q or %q)", c.App.Environment, EnvDev, EnvProd)
-	}
-
 	switch strings.ToLower(c.App.LogLevel) {
 	case "debug", "info", "warn", "error":
 	default:

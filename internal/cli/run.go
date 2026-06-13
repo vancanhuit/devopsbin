@@ -38,7 +38,7 @@ func newRunCmd() *cli.Command {
 			}
 
 			logger := logging.New(os.Stdout, cfg.App.LogLevel)
-			logger.Info("starting devopsbin", "env", cfg.App.Environment, "addr", cfg.Http.Addr)
+			logger.Info("starting devopsbin", "addr", cfg.Http.Addr)
 
 			// Cancel the run context on SIGINT/SIGTERM so the server can
 			// shut down gracefully. os.Interrupt is the portable alias for
