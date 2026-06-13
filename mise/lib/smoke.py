@@ -345,7 +345,12 @@ def check_echo(base_url: str) -> None:
         isinstance(origin, str) and origin != "",
         f"echo: origin {origin!r}, want non-empty string",
     )
-    print("[ok] echo -> 200 (reflects method, path, query, headers, origin)")
+    scheme = body.get("scheme")
+    expect(
+        scheme in ("http", "https"),
+        f"echo: scheme {scheme!r}, want 'http' or 'https'",
+    )
+    print("[ok] echo -> 200 (reflects method, path, query, headers, origin, scheme)")
 
 
 def check_status(base_url: str) -> None:

@@ -177,7 +177,7 @@ paths:
       summary: Echo the incoming request
       description: >
         Returns details of the incoming request: HTTP method, path, query
-        parameters, headers, and origin IP address.
+        parameters, headers, origin IP address, and scheme.
       responses:
         "200":
           description: A reflection of the incoming request.

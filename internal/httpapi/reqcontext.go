@@ -16,7 +16,7 @@ const (
 
 // withRequest stores the incoming *http.Request in its context so the
 // strict-server handlers (which only receive a context.Context) can reflect
-// request details such as headers and the origin IP.
+// request details such as headers, the origin IP, and the scheme.
 func withRequest(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := context.WithValue(r.Context(), requestCtxKey, r)

@@ -59,7 +59,7 @@ export interface InspectApiInterface {
     getEchoRequestOpts(): Promise<runtime.RequestOpts>;
 
     /**
-     * Returns details of the incoming request: HTTP method, path, query parameters, headers, and origin IP address. 
+     * Returns details of the incoming request: HTTP method, path, query parameters, headers, origin IP address, and scheme. 
      * @summary Echo the incoming request
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
@@ -68,7 +68,7 @@ export interface InspectApiInterface {
     getEchoRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<EchoResponse>>;
 
     /**
-     * Returns details of the incoming request: HTTP method, path, query parameters, headers, and origin IP address. 
+     * Returns details of the incoming request: HTTP method, path, query parameters, headers, origin IP address, and scheme. 
      * Echo the incoming request
      */
     getEcho(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EchoResponse>;
@@ -210,7 +210,7 @@ export class InspectApi extends runtime.BaseAPI implements InspectApiInterface {
     }
 
     /**
-     * Returns details of the incoming request: HTTP method, path, query parameters, headers, and origin IP address. 
+     * Returns details of the incoming request: HTTP method, path, query parameters, headers, origin IP address, and scheme. 
      * Echo the incoming request
      */
     async getEchoRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<EchoResponse>> {
@@ -221,7 +221,7 @@ export class InspectApi extends runtime.BaseAPI implements InspectApiInterface {
     }
 
     /**
-     * Returns details of the incoming request: HTTP method, path, query parameters, headers, and origin IP address. 
+     * Returns details of the incoming request: HTTP method, path, query parameters, headers, origin IP address, and scheme. 
      * Echo the incoming request
      */
     async getEcho(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EchoResponse> {

@@ -19,7 +19,7 @@ All URIs are relative to */api/v1*
 
 Echo the incoming request
 
-Returns details of the incoming request: HTTP method, path, query parameters, headers, and origin IP address. 
+Returns details of the incoming request: HTTP method, path, query parameters, headers, origin IP address, and scheme. 
 
 ### Example
 
