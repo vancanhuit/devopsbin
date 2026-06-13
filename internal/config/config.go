@@ -7,6 +7,7 @@
 package config
 
 import (
+	"crypto/x509"
 	"fmt"
 	"net"
 	"net/netip"
@@ -47,6 +48,12 @@ type HttpConfig struct {
 	// plain HTTP (e.g. when TLS is terminated by a fronting proxy).
 	TLSCertFile string `env:"TLS_CERT_FILE" json:"tls_cert_file"`
 	TLSKeyFile  string `env:"TLS_KEY_FILE" json:"tls_key_file"`
+	// TLSClientCAFile points at a PEM CA bundle used to verify client
+	// certificates (mutual TLS). When set, direct HTTPS serving must also be
+	// configured (TLSCertFile/TLSKeyFile), and the server then requires every
+	// client to present a certificate signed by one of these CAs. Leaving it
+	// empty disables client-certificate verification.
+	TLSClientCAFile string `env:"TLS_CLIENT_CA_FILE" json:"tls_client_ca_file"`
 	// TrustedProxies lists CIDR blocks of reverse proxies allowed to set
 	// forwarding headers. Forwarded headers (X-Forwarded-For) are honored only
 	// when the immediate peer falls within one of these ranges; an empty list
@@ -57,6 +64,27 @@ type HttpConfig struct {
 // TLSEnabled reports whether direct HTTPS serving is configured.
 func (h HttpConfig) TLSEnabled() bool {
 	return h.TLSCertFile != "" && h.TLSKeyFile != ""
+}
+
+// MTLSEnabled reports whether mutual TLS (client-certificate verification) is
+// configured. It requires both direct HTTPS serving and a client CA bundle.
+func (h HttpConfig) MTLSEnabled() bool {
+	return h.TLSEnabled() && h.TLSClientCAFile != ""
+}
+
+// ClientCAPool loads the configured TLSClientCAFile into a certificate pool for
+// verifying client certificates. It returns an error when the file is
+// unreadable or contains no PEM certificates.
+func (h HttpConfig) ClientCAPool() (*x509.CertPool, error) {
+	pem, err := os.ReadFile(h.TLSClientCAFile)
+	if err != nil {
+		return nil, fmt.Errorf("config: read tls_client_ca_file: %w", err)
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(pem) {
+		return nil, fmt.Errorf("config: no certificates found in tls_client_ca_file %q", h.TLSClientCAFile)
+	}
+	return pool, nil
 }
 
 // TrustedProxyPrefixes parses the configured TrustedProxies CIDR blocks into
@@ -175,10 +203,14 @@ func (c Config) Validate() error {
 
 // validateTLS enforces that the cert and key are configured together and that
 // both files are present and readable when set. Leaving both empty is valid and
-// selects plain HTTP serving.
+// selects plain HTTP serving. A client CA bundle (mutual TLS) is optional but
+// requires direct HTTPS serving and must contain at least one certificate.
 func (h HttpConfig) validateTLS() error {
 	switch {
 	case h.TLSCertFile == "" && h.TLSKeyFile == "":
+		if h.TLSClientCAFile != "" {
+			return fmt.Errorf("config: tls_client_ca_file requires tls_cert_file and tls_key_file")
+		}
 		return nil
 	case h.TLSCertFile == "":
 		return fmt.Errorf("config: tls_key_file is set but tls_cert_file is empty")
@@ -189,6 +221,12 @@ func (h HttpConfig) validateTLS() error {
 	for _, f := range [...]string{h.TLSCertFile, h.TLSKeyFile} {
 		if _, err := os.Stat(f); err != nil {
 			return fmt.Errorf("config: tls file %q is not readable: %w", f, err)
+		}
+	}
+
+	if h.TLSClientCAFile != "" {
+		if _, err := h.ClientCAPool(); err != nil {
+			return err
 		}
 	}
 	return nil

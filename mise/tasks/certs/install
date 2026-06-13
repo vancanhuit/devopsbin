@@ -26,13 +26,23 @@ mkdir -p "$certs_dir"
 echo "Installing the mkcert local CA into the system trust store ..."
 mkcert -install
 
-# Issue a leaf signed by the installed CA, overwriting any ephemeral certs so
-# tls/dev becomes browser-trusted.
-echo "Issuing browser-trusted leaf certificate -> ${certs_dir}/devopsbin.pem"
+# Issue a server leaf signed by the installed CA, overwriting any ephemeral
+# certs so tls/dev becomes browser-trusted. The api-mtls SAN lets a re-encrypting
+# proxy verify the upstream by name in the `mtls` profile.
+echo "Issuing browser-trusted server leaf certificate -> ${certs_dir}/devopsbin.pem"
 mkcert \
     -cert-file "${certs_dir}/devopsbin.pem" \
     -key-file "${certs_dir}/devopsbin-key.pem" \
-    localhost 127.0.0.1 ::1
+    localhost 127.0.0.1 ::1 api-mtls
+
+# Issue a client leaf (mutual TLS) signed by the same CA, used by the proxy and
+# the in-container healthcheck to authenticate to the mTLS backend.
+echo "Issuing client leaf certificate -> ${certs_dir}/devopsbin-client.pem"
+mkcert \
+    -client \
+    -cert-file "${certs_dir}/devopsbin-client.pem" \
+    -key-file "${certs_dir}/devopsbin-client-key.pem" \
+    localhost 127.0.0.1 ::1 caddy-mtls api-mtls
 
 caroot="$(mkcert -CAROOT)"
 echo "Copying CA -> ${certs_dir}/rootCA.pem (from ${caroot}/rootCA.pem)"

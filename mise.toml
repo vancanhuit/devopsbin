@@ -171,6 +171,32 @@ description = "Stop the tls-profile Docker Compose services started for smoke te
 env.TLS_CERTS_DIR = "./tls/test"
 run = "docker compose --profile tls down -v"
 
+[tasks."compose:mtls:up"]
+description = "Start the mtls-profile stack (mutual-TLS api + re-encrypting Caddy proxy)."
+# Generate the mkcert dev certs first (server + client leaves); compose mounts
+# tls/dev read-only into the api and Caddy services. VERSION/COMMIT/BUILD_TIME
+# come from [env] and are interpolated by compose.yaml into the build args.
+depends = ["certs:dev"]
+run = "docker compose --profile mtls up -d --wait --build"
+
+[tasks."compose:mtls:down"]
+description = "Stop the mtls-profile Docker Compose services."
+run = "docker compose --profile mtls down -v"
+
+[tasks."compose:mtls:test:up"]
+description = "Start the mtls-profile stack with disposable smoke-test certs (tls/test)."
+# Same stack as compose:mtls:up, but driven by smoke:mtls: generate ephemeral
+# certs into tls/test and point compose's cert mounts there via TLS_CERTS_DIR
+# so the disposable CI certs never mix with browser-trusted tls/dev certs.
+depends = ["certs:test"]
+env.TLS_CERTS_DIR = "./tls/test"
+run = "docker compose --profile mtls up -d --wait --build"
+
+[tasks."compose:mtls:test:down"]
+description = "Stop the mtls-profile Docker Compose services started for smoke tests."
+env.TLS_CERTS_DIR = "./tls/test"
+run = "docker compose --profile mtls down -v"
+
 [tasks."docker:hadolint"]
 description = "Run hadolint on the Dockerfile."
 tools = { hadolint = "2.14.0" }
