@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"net/http"
 	"os"
@@ -107,11 +108,28 @@ func newRunCmd() *cli.Command {
 				// Cap request header size (default 1 MiB) to reject header
 				// bombs before they consume memory.
 				MaxHeaderBytes: 1 << 20,
+				// Enforce a modern TLS floor when serving HTTPS directly. This
+				// is ignored for plain-HTTP serving.
+				TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12},
 			}
+
+			scheme := "http"
+			if cfg.Http.TLSEnabled() {
+				scheme = "https"
+			}
+			logger.Info("serving", "scheme", scheme, "addr", cfg.Http.Addr)
 
 			serveErr := make(chan error, 1)
 			go func() {
-				if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				var err error
+				if cfg.Http.TLSEnabled() {
+					// Cert and key paths are loaded from disk; TLSConfig above
+					// pins the minimum version.
+					err = srv.ListenAndServeTLS(cfg.Http.TLSCertFile, cfg.Http.TLSKeyFile)
+				} else {
+					err = srv.ListenAndServe()
+				}
+				if err != nil && !errors.Is(err, http.ErrServerClosed) {
 					serveErr <- err
 					return
 				}

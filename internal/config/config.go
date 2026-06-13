@@ -1,14 +1,16 @@
 // Package config loads and validates the service configuration.
 //
-// All settings come from environment variables prefixed with DEVOPSBIN_
-// (12-factor style). Defaults are tuned for production; local development
-// overrides them via the environment.
+// All settings come from environment variables (12-factor style), grouped by a
+// per-section prefix: APP_, HTTP_, POSTGRES_, and REDIS_ (for example
+// HTTP_ADDR or REDIS_MODE). Defaults are tuned for production; local
+// development overrides them via the environment.
 package config
 
 import (
 	"fmt"
 	"net"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -46,6 +48,16 @@ type HttpConfig struct {
 	IdleTimeout     time.Duration `env:"IDLE_TIMEOUT" envDefault:"60s" json:"idle_timeout"`
 	ShutdownTimeout time.Duration `env:"SHUTDOWN_TIMEOUT" envDefault:"15s" json:"shutdown_timeout"`
 	RequestTimeout  time.Duration `env:"REQUEST_TIMEOUT" envDefault:"60s" json:"request_timeout"`
+	// TLSCertFile and TLSKeyFile point at a PEM certificate (chain) and its
+	// private key. Set both to serve HTTPS directly; leave both empty to serve
+	// plain HTTP (e.g. when TLS is terminated by a fronting proxy).
+	TLSCertFile string `env:"TLS_CERT_FILE" json:"tls_cert_file"`
+	TLSKeyFile  string `env:"TLS_KEY_FILE" json:"tls_key_file"`
+}
+
+// TLSEnabled reports whether direct HTTPS serving is configured.
+func (h HttpConfig) TLSEnabled() bool {
+	return h.TLSCertFile != "" && h.TLSKeyFile != ""
 }
 
 type PostgresConfig struct {
@@ -139,6 +151,31 @@ func (c Config) Validate() error {
 		return fmt.Errorf("config: request_timeout must be positive")
 	}
 
+	if err := c.Http.validateTLS(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateTLS enforces that the cert and key are configured together and that
+// both files are present and readable when set. Leaving both empty is valid and
+// selects plain HTTP serving.
+func (h HttpConfig) validateTLS() error {
+	switch {
+	case h.TLSCertFile == "" && h.TLSKeyFile == "":
+		return nil
+	case h.TLSCertFile == "":
+		return fmt.Errorf("config: tls_key_file is set but tls_cert_file is empty")
+	case h.TLSKeyFile == "":
+		return fmt.Errorf("config: tls_cert_file is set but tls_key_file is empty")
+	}
+
+	for _, f := range [...]string{h.TLSCertFile, h.TLSKeyFile} {
+		if _, err := os.Stat(f); err != nil {
+			return fmt.Errorf("config: tls file %q is not readable: %w", f, err)
+		}
+	}
 	return nil
 }
 
