@@ -8,7 +8,10 @@ import (
 // ctxKey is an unexported context key type to avoid collisions.
 type ctxKey int
 
-const requestCtxKey ctxKey = iota
+const (
+	requestCtxKey ctxKey = iota
+	clientIPCtxKey
+)
 
 // withRequest stores the incoming *http.Request in its context so the
 // strict-server handlers (which only receive a context.Context) can reflect

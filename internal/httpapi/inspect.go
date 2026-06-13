@@ -61,12 +61,16 @@ func headerMap(r *http.Request) HeaderMap {
 	return out
 }
 
-// originIP returns the caller's IP address. The ClientIPFromRemoteAddr
-// middleware normalizes RemoteAddr to a bare IP; fall back to splitting a
-// host:port form defensively.
+// originIP returns the caller's IP address. When a trusted proxy resolved the
+// real client IP (see trustedProxy), that value is used; otherwise it falls
+// back to the connecting peer's RemoteAddr, splitting a host:port form
+// defensively.
 func originIP(r *http.Request) string {
 	if r == nil {
 		return ""
+	}
+	if ip, ok := clientIPFrom(r.Context()); ok {
+		return ip.String()
 	}
 	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
 		return host

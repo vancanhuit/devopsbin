@@ -9,6 +9,7 @@ package config
 import (
 	"fmt"
 	"net"
+	"net/netip"
 	"net/url"
 	"os"
 	"strings"
@@ -53,11 +54,34 @@ type HttpConfig struct {
 	// plain HTTP (e.g. when TLS is terminated by a fronting proxy).
 	TLSCertFile string `env:"TLS_CERT_FILE" json:"tls_cert_file"`
 	TLSKeyFile  string `env:"TLS_KEY_FILE" json:"tls_key_file"`
+	// TrustedProxies lists CIDR blocks of reverse proxies allowed to set
+	// forwarding headers. Forwarded headers (X-Forwarded-For) are honored only
+	// when the immediate peer falls within one of these ranges; an empty list
+	// disables forwarded-header handling so the peer address is authoritative.
+	TrustedProxies []string `env:"TRUSTED_PROXIES" envSeparator:"," json:"trusted_proxies"`
 }
 
 // TLSEnabled reports whether direct HTTPS serving is configured.
 func (h HttpConfig) TLSEnabled() bool {
 	return h.TLSCertFile != "" && h.TLSKeyFile != ""
+}
+
+// TrustedProxyPrefixes parses the configured TrustedProxies CIDR blocks into
+// netip prefixes. Empty entries are skipped; a malformed CIDR returns an error.
+func (h HttpConfig) TrustedProxyPrefixes() ([]netip.Prefix, error) {
+	prefixes := make([]netip.Prefix, 0, len(h.TrustedProxies))
+	for _, c := range h.TrustedProxies {
+		c = strings.TrimSpace(c)
+		if c == "" {
+			continue
+		}
+		p, err := netip.ParsePrefix(c)
+		if err != nil {
+			return nil, fmt.Errorf("config: invalid trusted proxy CIDR %q: %w", c, err)
+		}
+		prefixes = append(prefixes, p)
+	}
+	return prefixes, nil
 }
 
 type PostgresConfig struct {
@@ -152,6 +176,10 @@ func (c Config) Validate() error {
 	}
 
 	if err := c.Http.validateTLS(); err != nil {
+		return err
+	}
+
+	if _, err := c.Http.TrustedProxyPrefixes(); err != nil {
 		return err
 	}
 
