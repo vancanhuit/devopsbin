@@ -1,8 +1,9 @@
 // Package config loads and validates the service configuration.
 //
-// All settings come from environment variables prefixed with DEVOPSBIN_
-// (12-factor style). Defaults are tuned for production; local development
-// overrides them via the environment.
+// All settings come from environment variables (12-factor style), grouped by a
+// per-section prefix: APP_, HTTP_, POSTGRES_, and REDIS_ (for example
+// HTTP_ADDR or REDIS_MODE). Defaults are tuned for production; local
+// development overrides them via the environment.
 package config
 
 import (
