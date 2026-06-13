@@ -12,6 +12,7 @@ Name | Type
 `headers` | { [key: string]: Array&lt;string&gt;; }
 `origin` | string
 `scheme` | string
+`body` | string
 
 ## Example
 
@@ -26,6 +27,7 @@ const example = {
   "headers": {"Accept":["application/json"],"User-Agent":["curl/8.7.1"]},
   "origin": 203.0.113.42,
   "scheme": https,
+  "body": hello,
 } satisfies EchoResponse
 
 console.log(example)

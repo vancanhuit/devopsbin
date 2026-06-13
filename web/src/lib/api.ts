@@ -39,6 +39,14 @@ export interface CallResult {
 // parameters ignore it.
 export type CallArgs = Record<string, string>
 
+// CallOptions holds per-invocation choices that are not path parameters, such
+// as the HTTP method and request body for endpoints (like /echo) that accept
+// more than one method. Endpoints that support a single method ignore it.
+export interface CallOptions {
+  method?: string
+  body?: string
+}
+
 // api targets the /api/v1 base path baked into the generated client; in
 // development Vite proxies that prefix to the Go backend (see vite.config.ts).
 const config = new Configuration()
@@ -47,10 +55,29 @@ const inspect = new InspectApi(config)
 const status = new StatusApi(config)
 const latency = new LatencyApi(config)
 
+// echoRaw dispatches the /echo call to the generated method matching the
+// selected HTTP method, forwarding the optional request body for the methods
+// that carry one. Unknown methods fall back to GET.
+function echoRaw(opts: CallOptions): Promise<ApiResponse<unknown>> {
+  switch (opts.method) {
+    case 'POST':
+      return inspect.postEchoRaw({ body: opts.body })
+    case 'PUT':
+      return inspect.putEchoRaw({ body: opts.body })
+    case 'PATCH':
+      return inspect.patchEchoRaw({ body: opts.body })
+    case 'DELETE':
+      return inspect.deleteEchoRaw({ body: opts.body })
+    default:
+      return inspect.getEchoRaw()
+  }
+}
+
 // rawCalls maps each documented endpoint path to its generated raw call. The
 // *Raw variants return an ApiResponse, exposing both the typed body via
 // value() and the underlying Response for status and timing. Parameterized
-// endpoints receive the user-supplied CallArgs; the rest ignore them.
+// endpoints receive the user-supplied CallArgs; multi-method endpoints receive
+// the CallOptions; the rest ignore both.
 const rawCalls = {
   '/livez': () => api.getLivezRaw(),
   '/readyz': () => api.getReadyzRaw(),
@@ -61,10 +88,10 @@ const rawCalls = {
   '/headers': () => inspect.getHeadersRaw(),
   '/user-agent': () => inspect.getUserAgentRaw(),
   '/scheme': () => inspect.getSchemeRaw(),
-  '/echo': () => inspect.getEchoRaw(),
+  '/echo': (_args: CallArgs, opts: CallOptions) => echoRaw(opts),
   '/status/{code}': (args: CallArgs) => status.getStatusRaw({ code: Number(args.code) }),
   '/delay/{seconds}': (args: CallArgs) => latency.getDelayRaw({ seconds: Number(args.seconds) }),
-} satisfies Record<string, (args: CallArgs) => Promise<ApiResponse<unknown>>>
+} satisfies Record<string, (args: CallArgs, opts: CallOptions) => Promise<ApiResponse<unknown>>>
 
 // EndpointPath is the set of documented API paths the console can call.
 export type EndpointPath = keyof typeof rawCalls
@@ -99,6 +126,10 @@ export interface Endpoint {
   // params lists the inputs the console must collect before calling a
   // parameterized endpoint. Omitted for endpoints that take no input.
   params?: EndpointParam[]
+  // methods lists the HTTP methods the endpoint supports when more than one is
+  // available (e.g. /echo). Omitted for single-method endpoints, which use
+  // `method`.
+  methods?: string[]
 }
 
 export const endpoints: readonly Endpoint[] = [
@@ -169,8 +200,9 @@ export const endpoints: readonly Endpoint[] = [
     method: 'GET',
     path: '/echo',
     title: 'Echo',
-    description: 'Reflects the request method, path, query, headers, origin IP, and scheme.',
+    description: 'Reflects the request method, path, query, headers, origin IP, scheme, and body.',
     expectedStatuses: [200],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
   },
   {
     method: 'GET',
@@ -228,12 +260,20 @@ async function parseBody(res: Response): Promise<unknown> {
 
 // call performs the documented request for the given API path and returns a
 // normalized CallResult. Parameterized endpoints receive their user-supplied
-// args. Documented non-2xx responses (e.g. readyz 503) are reported with their
+// args; multi-method endpoints receive the per-call options (method, body).
+// Documented non-2xx responses (e.g. readyz 503) are reported with their
 // status and parsed body; only transport failures (network errors, unknown
 // paths) set `error`.
-export async function call(path: string, args: CallArgs = {}): Promise<CallResult> {
+export async function call(
+  path: string,
+  args: CallArgs = {},
+  opts: CallOptions = {}
+): Promise<CallResult> {
   const raw = (
-    rawCalls as Record<string, ((args: CallArgs) => Promise<ApiResponse<unknown>>) | undefined>
+    rawCalls as Record<
+      string,
+      ((args: CallArgs, opts: CallOptions) => Promise<ApiResponse<unknown>>) | undefined
+    >
   )[path]
   if (!raw) {
     return { ok: false, status: 0, durationMs: 0, body: null, error: `unknown endpoint: ${path}` }
@@ -241,7 +281,7 @@ export async function call(path: string, args: CallArgs = {}): Promise<CallResul
 
   const start = performance.now()
   try {
-    const res = await raw(args)
+    const res = await raw(args, opts)
     return {
       ok: res.raw.ok,
       status: res.raw.status,

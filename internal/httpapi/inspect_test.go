@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/vancanhuit/devopsbin/internal/httpapi"
@@ -143,6 +144,90 @@ func TestGetEcho(t *testing.T) {
 	}
 	if body.Scheme != httpapi.EchoResponseSchemeHttp {
 		t.Errorf("scheme = %q, want %q (plain HTTP request)", body.Scheme, httpapi.EchoResponseSchemeHttp)
+	}
+	if body.Body != nil {
+		t.Errorf("body = %v, want nil for a GET request", body.Body)
+	}
+}
+
+// doBody issues a request with the given method, path, and body, applying
+// mutate (if non-nil) before the request is served.
+func doBody(
+	t *testing.T,
+	h http.Handler,
+	method, path, reqBody string,
+	mutate func(*http.Request),
+) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(method, path, strings.NewReader(reqBody))
+	if mutate != nil {
+		mutate(req)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestEchoReflectsBodyMethods(t *testing.T) {
+	h := httpapi.NewServer().Handler()
+
+	for _, method := range []string{
+		http.MethodPost,
+		http.MethodPut,
+		http.MethodPatch,
+		http.MethodDelete,
+	} {
+		t.Run(method, func(t *testing.T) {
+			rec := doBody(t, h, method, "/api/v1/echo", "hello world", func(r *http.Request) {
+				r.RemoteAddr = "203.0.113.42:54321"
+			})
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+			}
+			body := decode[httpapi.EchoResponse](t, rec)
+			if body.Method != method {
+				t.Errorf("method = %q, want %q", body.Method, method)
+			}
+			if body.Body == nil || *body.Body != "hello world" {
+				t.Errorf("body = %v, want %q", body.Body, "hello world")
+			}
+			if body.Origin != "203.0.113.42" {
+				t.Errorf("origin = %q, want %q", body.Origin, "203.0.113.42")
+			}
+		})
+	}
+}
+
+func TestEchoEmptyBody(t *testing.T) {
+	h := httpapi.NewServer().Handler()
+
+	rec := doBody(t, h, http.MethodPost, "/api/v1/echo", "", nil)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	body := decode[httpapi.EchoResponse](t, rec)
+	if body.Body != nil {
+		t.Errorf("body = %v, want nil for an empty request body", body.Body)
+	}
+}
+
+func TestEchoBodyTooLarge(t *testing.T) {
+	h := httpapi.NewServer().Handler()
+
+	oversized := strings.Repeat("a", (64<<10)+1)
+	rec := doBody(t, h, http.MethodPost, "/api/v1/echo", oversized, nil)
+
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusRequestEntityTooLarge)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
+		t.Errorf("Content-Type = %q, want application/json", ct)
+	}
+	body := decode[httpapi.ErrorResponse](t, rec)
+	if body.Error == "" {
+		t.Error("error message is empty, want a description")
 	}
 }
 

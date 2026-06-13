@@ -185,6 +185,66 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/EchoResponse"
+    post:
+      operationId: postEcho
+      tags:
+        - Inspect
+      summary: Echo the incoming request
+      description: >
+        Returns details of the incoming request: HTTP method, path, query
+        parameters, headers, origin IP address, scheme, and request body.
+      requestBody:
+        $ref: "#/components/requestBodies/EchoBody"
+      responses:
+        "200":
+          $ref: "#/components/responses/EchoReflection"
+        "413":
+          $ref: "#/components/responses/EchoBodyTooLarge"
+    put:
+      operationId: putEcho
+      tags:
+        - Inspect
+      summary: Echo the incoming request
+      description: >
+        Returns details of the incoming request: HTTP method, path, query
+        parameters, headers, origin IP address, scheme, and request body.
+      requestBody:
+        $ref: "#/components/requestBodies/EchoBody"
+      responses:
+        "200":
+          $ref: "#/components/responses/EchoReflection"
+        "413":
+          $ref: "#/components/responses/EchoBodyTooLarge"
+    patch:
+      operationId: patchEcho
+      tags:
+        - Inspect
+      summary: Echo the incoming request
+      description: >
+        Returns details of the incoming request: HTTP method, path, query
+        parameters, headers, origin IP address, scheme, and request body.
+      requestBody:
+        $ref: "#/components/requestBodies/EchoBody"
+      responses:
+        "200":
+          $ref: "#/components/responses/EchoReflection"
+        "413":
+          $ref: "#/components/responses/EchoBodyTooLarge"
+    delete:
+      operationId: deleteEcho
+      tags:
+        - Inspect
+      summary: Echo the incoming request
+      description: >
+        Returns details of the incoming request: HTTP method, path, query
+        parameters, headers, origin IP address, scheme, and request body.
+      requestBody:
+        $ref: "#/components/requestBodies/EchoBody"
+      responses:
+        "200":
+          $ref: "#/components/responses/EchoReflection"
+        "413":
+          $ref: "#/components/responses/EchoBodyTooLarge"
 
   /status/{code}:
     get:
@@ -258,6 +318,32 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
 
 components:
+  requestBodies:
+    EchoBody:
+      description: >
+        An optional request body to reflect back. The body is read as plain
+        text and echoed verbatim, up to 64 KiB.
+      required: false
+      content:
+        text/plain:
+          schema:
+            type: string
+            example: hello
+
+  responses:
+    EchoReflection:
+      description: A reflection of the incoming request.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/EchoResponse"
+    EchoBodyTooLarge:
+      description: The request body exceeds the maximum size that can be echoed.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
   schemas:
     LivezResponse:
       type: object
@@ -451,6 +537,13 @@ components:
             - https
           description: The scheme (http or https) of the incoming request.
           example: https
+        body:
+          type: string
+          nullable: true
+          description: >
+            The request body echoed back verbatim. Null for methods that carry
+            no body (such as GET).
+          example: hello
 
     HeaderMap:
       type: object
