@@ -22,6 +22,14 @@ x-redis-base: &redis-base
 # only overrides the topology-specific environment, ports, depends_on, and
 # network.
 x-api-base: &api-base
+  # A single shared image tag so Compose builds the binary image exactly once
+  # and every service (api, the one-shot migrate, and the per-profile tls/mtls
+  # variants) reuses it. Without an explicit image name Compose derives one per
+  # service and builds each separately; when two such services share a profile
+  # they build concurrently and race to export the same local BuildKit cache
+  # (cache_to below), corrupting .cache/buildx. One image name collapses that to
+  # a single build.
+  image: devopsbin:${VERSION:-dev}
   build:
     context: .
     dockerfile: Dockerfile
