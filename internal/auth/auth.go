@@ -24,6 +24,11 @@ import (
 // evolve without colliding with other keyspaces.
 const sessionKeyPrefix = "session:v1:"
 
+// userSessionsKeyPrefix namespaces the per-user set of active session ids,
+// letting the Manager enumerate and revoke every session belonging to a user
+// (e.g. after a password change or reset) without scanning the keyspace.
+const userSessionsKeyPrefix = "user-sessions:v1:"
+
 // tokenBytes is the entropy (in bytes) of generated session ids and CSRF
 // tokens before base64url encoding.
 const tokenBytes = 32
@@ -45,6 +50,11 @@ type SessionStore interface {
 	Set(ctx context.Context, key, value string, ttl time.Duration) error
 	Get(ctx context.Context, key string) (string, error)
 	Del(ctx context.Context, key string) error
+	// SAdd adds member to the set at key, refreshing the set's TTL. It backs
+	// the per-user session index used for bulk revocation.
+	SAdd(ctx context.Context, key, member string, ttl time.Duration) error
+	// SMembers returns the members of the set at key (empty when absent).
+	SMembers(ctx context.Context, key string) ([]string, error)
 }
 
 // Identity is the user information bound into a new session.
@@ -117,6 +127,11 @@ func (m *Manager) CreateSession(ctx context.Context, id Identity) (Session, erro
 	if err := m.save(ctx, sess, m.idleTTL); err != nil {
 		return Session{}, err
 	}
+	// Index the session under its user so it can be revoked in bulk. The set
+	// TTL tracks the absolute lifetime, the longest any session may live.
+	if err := m.store.SAdd(ctx, userSessionsKey(id.UserID), sid, m.absoluteTTL); err != nil {
+		return Session{}, fmt.Errorf("auth: index session: %w", err)
+	}
 	return sess, nil
 }
 
@@ -167,6 +182,33 @@ func (m *Manager) TouchSession(ctx context.Context, sess Session) error {
 func (m *Manager) DeleteSession(ctx context.Context, id string) error {
 	if err := m.store.Del(ctx, sessionKey(id)); err != nil {
 		return fmt.Errorf("auth: delete session: %w", err)
+	}
+	return nil
+}
+
+// RevokeUserSessions deletes every session belonging to userID except exceptID
+// (pass an empty string to revoke all). It is used after a password change or
+// reset so that other devices are logged out. Stale ids left in the index point
+// to already-deleted keys and are harmlessly re-deleted; the index set expires
+// on its own TTL. When exceptID is empty the index set is also removed.
+func (m *Manager) RevokeUserSessions(ctx context.Context, userID, exceptID string) error {
+	key := userSessionsKey(userID)
+	ids, err := m.store.SMembers(ctx, key)
+	if err != nil {
+		return fmt.Errorf("auth: list user sessions: %w", err)
+	}
+	for _, id := range ids {
+		if id == exceptID {
+			continue
+		}
+		if err := m.DeleteSession(ctx, id); err != nil {
+			return err
+		}
+	}
+	if exceptID == "" {
+		if err := m.store.Del(ctx, key); err != nil {
+			return fmt.Errorf("auth: clear user session index: %w", err)
+		}
 	}
 	return nil
 }
@@ -226,4 +268,8 @@ func randomToken() (string, error) {
 
 func sessionKey(id string) string {
 	return sessionKeyPrefix + id
+}
+
+func userSessionsKey(userID string) string {
+	return userSessionsKeyPrefix + userID
 }

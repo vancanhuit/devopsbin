@@ -277,6 +277,79 @@ func TestStore_UserByUsername_NotFound(t *testing.T) {
 	}
 }
 
+// TestStore_UserByID_RoundTrip looks a registered user up by id.
+func TestStore_UserByID_RoundTrip(t *testing.T) {
+	applyMigrations(t)
+	s := newStore(t)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+
+	username := uniqueUsername(t)
+	user, err := s.RegisterUser(ctx, store.NewUser{Username: username, PasswordHash: "hash", Role: "user"})
+	if err != nil {
+		t.Fatalf("RegisterUser: %v", err)
+	}
+
+	got, err := s.UserByID(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("UserByID: %v", err)
+	}
+	if got.ID != user.ID || got.Username != username || got.PasswordHash != "hash" {
+		t.Fatalf("UserByID mismatch: %+v", got)
+	}
+}
+
+// TestStore_UserByID_NotFound maps a malformed or absent id to ErrUserNotFound.
+func TestStore_UserByID_NotFound(t *testing.T) {
+	applyMigrations(t)
+	s := newStore(t)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+
+	if _, err := s.UserByID(ctx, "not-a-uuid"); !errors.Is(err, store.ErrUserNotFound) {
+		t.Fatalf("malformed id err = %v, want ErrUserNotFound", err)
+	}
+	if _, err := s.UserByID(ctx, "018f9d6b-cbbf-7b2d-9b5d-ab8dfbbd4bed"); !errors.Is(err, store.ErrUserNotFound) {
+		t.Fatalf("absent id err = %v, want ErrUserNotFound", err)
+	}
+}
+
+// TestStore_UpdatePassword changes the stored hash and maps unknown users to
+// ErrUserNotFound.
+func TestStore_UpdatePassword(t *testing.T) {
+	applyMigrations(t)
+	s := newStore(t)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+
+	username := uniqueUsername(t)
+	user, err := s.RegisterUser(ctx, store.NewUser{Username: username, PasswordHash: "old-hash", Role: "user"})
+	if err != nil {
+		t.Fatalf("RegisterUser: %v", err)
+	}
+
+	if err := s.UpdatePassword(ctx, user.ID, "new-hash"); err != nil {
+		t.Fatalf("UpdatePassword: %v", err)
+	}
+	got, err := s.UserByID(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("UserByID: %v", err)
+	}
+	if got.PasswordHash != "new-hash" {
+		t.Fatalf("password hash = %q, want %q", got.PasswordHash, "new-hash")
+	}
+
+	if err := s.UpdatePassword(ctx, "not-a-uuid", "x"); !errors.Is(err, store.ErrUserNotFound) {
+		t.Fatalf("malformed id err = %v, want ErrUserNotFound", err)
+	}
+	if err := s.UpdatePassword(ctx, "018f9d6b-cbbf-7b2d-9b5d-ab8dfbbd4bed", "x"); !errors.Is(err, store.ErrUserNotFound) {
+		t.Fatalf("absent id err = %v, want ErrUserNotFound", err)
+	}
+}
+
 // TestStore_SeedData verifies the seed migration created the documented demo
 // users with their roles.
 func TestStore_SeedData(t *testing.T) {

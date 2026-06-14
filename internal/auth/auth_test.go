@@ -16,13 +16,20 @@ func isMiss(err error) bool { return errors.Is(err, errMiss) }
 // fakeStore is an in-memory SessionStore that records the most recent TTL set
 // per key so tests can assert the sliding/absolute TTL behavior.
 type fakeStore struct {
-	mu   sync.Mutex
-	data map[string]string
-	ttls map[string]time.Duration
+	mu       sync.Mutex
+	data     map[string]string
+	ttls     map[string]time.Duration
+	sets     map[string]map[string]struct{}
+	counters map[string]int64
 }
 
 func newFakeStore() *fakeStore {
-	return &fakeStore{data: map[string]string{}, ttls: map[string]time.Duration{}}
+	return &fakeStore{
+		data:     map[string]string{},
+		ttls:     map[string]time.Duration{},
+		sets:     map[string]map[string]struct{}{},
+		counters: map[string]int64{},
+	}
 }
 
 func (f *fakeStore) Set(_ context.Context, key, value string, ttl time.Duration) error {
@@ -48,7 +55,59 @@ func (f *fakeStore) Del(_ context.Context, key string) error {
 	defer f.mu.Unlock()
 	delete(f.data, key)
 	delete(f.ttls, key)
+	delete(f.sets, key)
+	delete(f.counters, key)
 	return nil
+}
+
+func (f *fakeStore) GetDel(_ context.Context, key string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	v, ok := f.data[key]
+	if !ok {
+		return "", errMiss
+	}
+	delete(f.data, key)
+	delete(f.ttls, key)
+	return v, nil
+}
+
+func (f *fakeStore) Incr(_ context.Context, key string, ttl time.Duration) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.counters[key]++
+	n := f.counters[key]
+	if n == 1 {
+		f.ttls[key] = ttl
+	}
+	return n, nil
+}
+
+func (f *fakeStore) TTL(_ context.Context, key string) (time.Duration, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.ttls[key], nil
+}
+
+func (f *fakeStore) SAdd(_ context.Context, key, member string, ttl time.Duration) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.sets[key] == nil {
+		f.sets[key] = map[string]struct{}{}
+	}
+	f.sets[key][member] = struct{}{}
+	f.ttls[key] = ttl
+	return nil
+}
+
+func (f *fakeStore) SMembers(_ context.Context, key string) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	members := make([]string, 0, len(f.sets[key]))
+	for m := range f.sets[key] {
+		members = append(members, m)
+	}
+	return members, nil
 }
 
 func (f *fakeStore) len() int {
@@ -231,6 +290,61 @@ func TestManager_DeleteSession(t *testing.T) {
 	}
 	if _, err := m.GetSession(ctx, sess.ID); !errors.Is(err, ErrSessionNotFound) {
 		t.Fatalf("err = %v, want ErrSessionNotFound", err)
+	}
+}
+
+func TestManager_RevokeUserSessions_ExceptOne(t *testing.T) {
+	store := newFakeStore()
+	m := newTestManager(store)
+	ctx := context.Background()
+
+	a, err := m.CreateSession(ctx, testIdentity)
+	if err != nil {
+		t.Fatalf("CreateSession a: %v", err)
+	}
+	b, err := m.CreateSession(ctx, testIdentity)
+	if err != nil {
+		t.Fatalf("CreateSession b: %v", err)
+	}
+
+	// Revoke every session for the user except b.
+	if err := m.RevokeUserSessions(ctx, testIdentity.UserID, b.ID); err != nil {
+		t.Fatalf("RevokeUserSessions: %v", err)
+	}
+	if _, err := m.GetSession(ctx, a.ID); !errors.Is(err, ErrSessionNotFound) {
+		t.Fatalf("session a err = %v, want ErrSessionNotFound", err)
+	}
+	if _, err := m.GetSession(ctx, b.ID); err != nil {
+		t.Fatalf("session b should survive, got %v", err)
+	}
+}
+
+func TestManager_RevokeUserSessions_All(t *testing.T) {
+	store := newFakeStore()
+	m := newTestManager(store)
+	ctx := context.Background()
+
+	a, err := m.CreateSession(ctx, testIdentity)
+	if err != nil {
+		t.Fatalf("CreateSession a: %v", err)
+	}
+	b, err := m.CreateSession(ctx, testIdentity)
+	if err != nil {
+		t.Fatalf("CreateSession b: %v", err)
+	}
+
+	// An empty exceptID revokes all sessions for the user.
+	if err := m.RevokeUserSessions(ctx, testIdentity.UserID, ""); err != nil {
+		t.Fatalf("RevokeUserSessions: %v", err)
+	}
+	if _, err := m.GetSession(ctx, a.ID); !errors.Is(err, ErrSessionNotFound) {
+		t.Fatalf("session a err = %v, want ErrSessionNotFound", err)
+	}
+	if _, err := m.GetSession(ctx, b.ID); !errors.Is(err, ErrSessionNotFound) {
+		t.Fatalf("session b err = %v, want ErrSessionNotFound", err)
+	}
+	if store.len() != 0 {
+		t.Fatalf("expected all sessions deleted, got %d", store.len())
 	}
 }
 

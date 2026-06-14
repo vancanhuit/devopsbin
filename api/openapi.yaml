@@ -408,6 +408,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "423":
+          description: >
+            Too many failed login attempts. The account or client is temporarily
+            locked; retry after the period indicated by the Retry-After header.
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying.
+              schema:
+                type: integer
+                format: int32
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /auth/logout:
     post:
@@ -461,6 +475,131 @@ paths:
                 $ref: "#/components/schemas/UserResponse"
         "401":
           description: No valid session is present.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/password/change:
+    post:
+      operationId: postAuthPasswordChange
+      tags:
+        - Auth
+      summary: Change the current user's password
+      description: >
+        Verifies the current password and sets a new one for the authenticated
+        user. On success the session is rotated (a fresh session id and CSRF
+        token are issued via Set-Cookie) and all other sessions for the user are
+        revoked. Requires a valid session cookie and a matching X-CSRF-Token
+        header.
+      parameters:
+        - $ref: "#/components/parameters/CsrfTokenHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordChangeRequest"
+      responses:
+        "200":
+          description: >
+            The password was changed and the session was rotated. The session
+            and CSRF cookies are refreshed via Set-Cookie.
+          headers:
+            Set-Cookie:
+              description: Refreshes the session and CSRF cookies.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        "400":
+          description: The request body is missing or malformed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: No valid session is present.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: >
+            The CSRF token is missing or does not match the session, or the
+            current password is incorrect.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/password/reset-request:
+    post:
+      operationId: postAuthPasswordResetRequest
+      tags:
+        - Auth
+      summary: Request a password-reset token
+      description: >
+        Issues a single-use, expiring password-reset token for the given
+        username. To avoid leaking which usernames exist, the response is always
+        200 regardless of whether the user exists. In production the token would
+        be emailed; for this demo it is returned in the response body when the
+        user exists.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordResetRequestRequest"
+      responses:
+        "200":
+          description: >
+            The request was accepted. When the user exists, a reset token is
+            included in the response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PasswordResetResponse"
+        "400":
+          description: The request body is missing or malformed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/password/reset:
+    post:
+      operationId: postAuthPasswordReset
+      tags:
+        - Auth
+      summary: Reset a password using a reset token
+      description: >
+        Consumes a single-use reset token and sets a new password for the
+        associated user. The token is invalidated on use and all of the user's
+        sessions are revoked.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordResetRequest"
+      responses:
+        "200":
+          description: The password was reset.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "400":
+          description: The request body is missing or malformed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "410":
+          description: The reset token is unknown, expired, or already used.
           content:
             application/json:
               schema:
@@ -824,3 +963,81 @@ components:
             - admin
           description: The user's role.
           example: user
+
+    PasswordChangeRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - currentPassword
+        - newPassword
+      properties:
+        currentPassword:
+          type: string
+          format: password
+          description: The account's current password, re-verified before the change.
+          example: alicepass
+        newPassword:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 128
+          description: The new password (stored only as a bcrypt hash).
+          example: alicepass2
+
+    PasswordResetRequestRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - username
+      properties:
+        username:
+          type: string
+          description: The username to issue a reset token for.
+          example: alice
+
+    PasswordResetResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          description: A human-readable acknowledgement.
+          example: If the user exists, a reset token has been issued.
+        token:
+          type: string
+          description: >
+            The single-use reset token, present only when the user exists. In
+            production this would be emailed instead of returned.
+          example: 7Qy3w8Zk1pT0nB2cR4sV6xA9dE5fG1hJ3kL7mN0pQ
+
+    PasswordResetRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - token
+        - newPassword
+      properties:
+        token:
+          type: string
+          description: The single-use reset token issued by /auth/password/reset-request.
+          example: 7Qy3w8Zk1pT0nB2cR4sV6xA9dE5fG1hJ3kL7mN0pQ
+        newPassword:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 128
+          description: The new password (stored only as a bcrypt hash).
+          example: alicepass2
+
+    MessageResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          description: A human-readable acknowledgement.
+          example: Password has been reset.

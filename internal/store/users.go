@@ -113,6 +113,50 @@ func (s *Store) UserByUsername(ctx context.Context, username string) (UserWithHa
 	}, nil
 }
 
+// UserByID looks up a user (with password hash) by id. A malformed id or a
+// missing user both map to ErrUserNotFound.
+func (s *Store) UserByID(ctx context.Context, id string) (UserWithHash, error) {
+	uid, err := parseUUID(id)
+	if err != nil {
+		return UserWithHash{}, ErrUserNotFound
+	}
+	row, err := s.Queries().GetUserByID(ctx, uid)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return UserWithHash{}, ErrUserNotFound
+		}
+		return UserWithHash{}, fmt.Errorf("store: get user by id: %w", err)
+	}
+
+	return UserWithHash{
+		User: User{
+			ID:       uuidString(row.ID),
+			Username: row.Username,
+			Role:     row.Role,
+		},
+		PasswordHash: row.PasswordHash,
+	}, nil
+}
+
+// UpdatePassword replaces the bcrypt password hash for the user with id. A
+// malformed id or a missing user maps to ErrUserNotFound.
+func (s *Store) UpdatePassword(ctx context.Context, id, passwordHash string) error {
+	uid, err := parseUUID(id)
+	if err != nil {
+		return ErrUserNotFound
+	}
+	if _, err := s.Queries().UpdateUserPassword(ctx, sqlc.UpdateUserPasswordParams{
+		ID:           uid,
+		PasswordHash: passwordHash,
+	}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrUserNotFound
+		}
+		return fmt.Errorf("store: update user password: %w", err)
+	}
+	return nil
+}
+
 // isUniqueViolation reports whether err is a PostgreSQL unique-constraint
 // violation.
 func isUniqueViolation(err error) bool {
@@ -128,4 +172,15 @@ func uuidString(u pgtype.UUID) string {
 	}
 	b := u.Bytes
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+}
+
+// parseUUID converts a canonical UUID string into a pgtype.UUID for use as a
+// query parameter. An unparseable string yields an error so callers can map it
+// to a not-found result rather than issuing a malformed query.
+func parseUUID(s string) (pgtype.UUID, error) {
+	var u pgtype.UUID
+	if err := u.Scan(s); err != nil {
+		return pgtype.UUID{}, fmt.Errorf("store: parse uuid: %w", err)
+	}
+	return u, nil
 }

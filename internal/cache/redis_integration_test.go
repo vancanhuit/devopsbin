@@ -120,3 +120,126 @@ func TestClient_Get_Miss(t *testing.T) {
 		t.Fatalf("Get err = %v, want a miss", err)
 	}
 }
+
+// TestClient_GetDel atomically returns and deletes a key; a second GetDel of
+// the same key reports a miss.
+func TestClient_GetDel(t *testing.T) {
+	c := newClient(t)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	key := fmt.Sprintf("test:cache:getdel:%d", time.Now().UnixNano())
+	if err := c.Set(ctx, key, "once", time.Minute); err != nil {
+		t.Fatalf("Set: %v", err)
+	}
+
+	got, err := c.GetDel(ctx, key)
+	if err != nil {
+		t.Fatalf("GetDel: %v", err)
+	}
+	if got != "once" {
+		t.Fatalf("GetDel = %q, want %q", got, "once")
+	}
+	if _, err := c.GetDel(ctx, key); !cache.IsMiss(err) {
+		t.Fatalf("second GetDel err = %v, want a miss", err)
+	}
+}
+
+// TestClient_Incr increments a fixed-window counter and reports the remaining
+// TTL set on the first increment.
+func TestClient_Incr(t *testing.T) {
+	c := newClient(t)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	key := fmt.Sprintf("test:cache:incr:%d", time.Now().UnixNano())
+	t.Cleanup(func() { _ = c.Del(context.Background(), key) })
+
+	n, err := c.Incr(ctx, key, time.Minute)
+	if err != nil {
+		t.Fatalf("Incr: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("first Incr = %d, want 1", n)
+	}
+	n, err = c.Incr(ctx, key, time.Minute)
+	if err != nil {
+		t.Fatalf("Incr: %v", err)
+	}
+	if n != 2 {
+		t.Fatalf("second Incr = %d, want 2", n)
+	}
+
+	ttl, err := c.TTL(ctx, key)
+	if err != nil {
+		t.Fatalf("TTL: %v", err)
+	}
+	if ttl <= 0 || ttl > time.Minute {
+		t.Fatalf("TTL = %v, want (0, 1m]", ttl)
+	}
+}
+
+// TestClient_TTL_NoExpiry reports a zero duration for a key without an expiry,
+// and TestClient_TTL_Missing does likewise for an absent key.
+func TestClient_TTL_NoExpiryAndMissing(t *testing.T) {
+	c := newClient(t)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	missing := fmt.Sprintf("test:cache:ttl:absent:%d", time.Now().UnixNano())
+	if ttl, err := c.TTL(ctx, missing); err != nil || ttl != 0 {
+		t.Fatalf("TTL(absent) = %v, %v; want 0, nil", ttl, err)
+	}
+
+	noExpiry := fmt.Sprintf("test:cache:ttl:persist:%d", time.Now().UnixNano())
+	t.Cleanup(func() { _ = c.Del(context.Background(), noExpiry) })
+	if err := c.Set(ctx, noExpiry, "v", 0); err != nil {
+		t.Fatalf("Set: %v", err)
+	}
+	if ttl, err := c.TTL(ctx, noExpiry); err != nil || ttl != 0 {
+		t.Fatalf("TTL(no-expiry) = %v, %v; want 0, nil", ttl, err)
+	}
+}
+
+// TestClient_SAddSMembers adds members to a set and reads them back; an absent
+// set reads as empty.
+func TestClient_SAddSMembers(t *testing.T) {
+	c := newClient(t)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	key := fmt.Sprintf("test:cache:set:%d", time.Now().UnixNano())
+	t.Cleanup(func() { _ = c.Del(context.Background(), key) })
+
+	if err := c.SAdd(ctx, key, "a", time.Minute); err != nil {
+		t.Fatalf("SAdd a: %v", err)
+	}
+	if err := c.SAdd(ctx, key, "b", time.Minute); err != nil {
+		t.Fatalf("SAdd b: %v", err)
+	}
+
+	members, err := c.SMembers(ctx, key)
+	if err != nil {
+		t.Fatalf("SMembers: %v", err)
+	}
+	got := map[string]bool{}
+	for _, m := range members {
+		got[m] = true
+	}
+	if len(got) != 2 || !got["a"] || !got["b"] {
+		t.Fatalf("SMembers = %v, want {a, b}", members)
+	}
+
+	absent := fmt.Sprintf("test:cache:set:absent:%d", time.Now().UnixNano())
+	empty, err := c.SMembers(ctx, absent)
+	if err != nil {
+		t.Fatalf("SMembers(absent): %v", err)
+	}
+	if len(empty) != 0 {
+		t.Fatalf("SMembers(absent) = %v, want empty", empty)
+	}
+}

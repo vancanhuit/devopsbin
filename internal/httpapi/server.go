@@ -31,6 +31,8 @@ type BuildInfo struct {
 type userStore interface {
 	RegisterUser(ctx context.Context, params store.NewUser) (store.User, error)
 	UserByUsername(ctx context.Context, username string) (store.UserWithHash, error)
+	UserByID(ctx context.Context, id string) (store.UserWithHash, error)
+	UpdatePassword(ctx context.Context, id, passwordHash string) error
 }
 
 // AuthSettings configures the auth handlers and cookies.
@@ -64,6 +66,8 @@ type Server struct {
 	users          userStore
 	sessions       *auth.Manager
 	authSettings   AuthSettings
+	recovery       *auth.Recovery
+	lockout        *auth.Lockout
 }
 
 // Option configures a Server.
@@ -148,6 +152,23 @@ func WithAuth(users userStore, sessions *auth.Manager, settings AuthSettings) Op
 		s.users = users
 		s.sessions = sessions
 		s.authSettings = settings
+	}
+}
+
+// WithPasswordRecovery wires the password-reset token issuer used by the
+// reset-request and reset endpoints. When unset, those endpoints report that
+// recovery is unavailable.
+func WithPasswordRecovery(recovery *auth.Recovery) Option {
+	return func(s *Server) {
+		s.recovery = recovery
+	}
+}
+
+// WithLoginLockout wires the brute-force lockout used by the login endpoint.
+// When unset, logins are not throttled.
+func WithLoginLockout(lockout *auth.Lockout) Option {
+	return func(s *Server) {
+		s.lockout = lockout
 	}
 }
 

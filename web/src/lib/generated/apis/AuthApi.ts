@@ -24,6 +24,31 @@ import {
     LoginRequestToJSON,
 } from '../models/LoginRequest';
 import {
+    type MessageResponse,
+    MessageResponseFromJSON,
+    MessageResponseToJSON,
+} from '../models/MessageResponse';
+import {
+    type PasswordChangeRequest,
+    PasswordChangeRequestFromJSON,
+    PasswordChangeRequestToJSON,
+} from '../models/PasswordChangeRequest';
+import {
+    type PasswordResetRequest,
+    PasswordResetRequestFromJSON,
+    PasswordResetRequestToJSON,
+} from '../models/PasswordResetRequest';
+import {
+    type PasswordResetRequestRequest,
+    PasswordResetRequestRequestFromJSON,
+    PasswordResetRequestRequestToJSON,
+} from '../models/PasswordResetRequestRequest';
+import {
+    type PasswordResetResponse,
+    PasswordResetResponseFromJSON,
+    PasswordResetResponseToJSON,
+} from '../models/PasswordResetResponse';
+import {
     type RegisterRequest,
     RegisterRequestFromJSON,
     RegisterRequestToJSON,
@@ -40,6 +65,19 @@ export interface PostAuthLoginRequest {
 
 export interface PostAuthLogoutRequest {
     xCSRFToken?: string;
+}
+
+export interface PostAuthPasswordChangeRequest {
+    passwordChangeRequest: PasswordChangeRequest;
+    xCSRFToken?: string;
+}
+
+export interface PostAuthPasswordResetRequest {
+    passwordResetRequest: PasswordResetRequest;
+}
+
+export interface PostAuthPasswordResetRequestRequest {
+    passwordResetRequestRequest: PasswordResetRequestRequest;
 }
 
 export interface PostAuthRegisterRequest {
@@ -122,6 +160,80 @@ export interface AuthApiInterface {
      * Log out of the current session
      */
     postAuthLogout(requestParameters: PostAuthLogoutRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
+
+    /**
+     * Creates request options for postAuthPasswordChange without sending the request
+     * @param {PasswordChangeRequest} passwordChangeRequest 
+     * @param {string} [xCSRFToken] The CSRF token from the devopsbin_csrf cookie. Required in practice on state-changing requests to authenticated routes; a missing or mismatched token yields a 403 response. Must match the token bound to the current session. 
+     * @throws {RequiredError}
+     * @memberof AuthApiInterface
+     */
+    postAuthPasswordChangeRequestOpts(requestParameters: PostAuthPasswordChangeRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Verifies the current password and sets a new one for the authenticated user. On success the session is rotated (a fresh session id and CSRF token are issued via Set-Cookie) and all other sessions for the user are revoked. Requires a valid session cookie and a matching X-CSRF-Token header. 
+     * @summary Change the current user\'s password
+     * @param {PasswordChangeRequest} passwordChangeRequest 
+     * @param {string} [xCSRFToken] The CSRF token from the devopsbin_csrf cookie. Required in practice on state-changing requests to authenticated routes; a missing or mismatched token yields a 403 response. Must match the token bound to the current session. 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AuthApiInterface
+     */
+    postAuthPasswordChangeRaw(requestParameters: PostAuthPasswordChangeRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<UserResponse>>;
+
+    /**
+     * Verifies the current password and sets a new one for the authenticated user. On success the session is rotated (a fresh session id and CSRF token are issued via Set-Cookie) and all other sessions for the user are revoked. Requires a valid session cookie and a matching X-CSRF-Token header. 
+     * Change the current user\'s password
+     */
+    postAuthPasswordChange(requestParameters: PostAuthPasswordChangeRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<UserResponse>;
+
+    /**
+     * Creates request options for postAuthPasswordReset without sending the request
+     * @param {PasswordResetRequest} passwordResetRequest 
+     * @throws {RequiredError}
+     * @memberof AuthApiInterface
+     */
+    postAuthPasswordResetRequestOpts(requestParameters: PostAuthPasswordResetRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Consumes a single-use reset token and sets a new password for the associated user. The token is invalidated on use and all of the user\'s sessions are revoked. 
+     * @summary Reset a password using a reset token
+     * @param {PasswordResetRequest} passwordResetRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AuthApiInterface
+     */
+    postAuthPasswordResetRaw(requestParameters: PostAuthPasswordResetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<MessageResponse>>;
+
+    /**
+     * Consumes a single-use reset token and sets a new password for the associated user. The token is invalidated on use and all of the user\'s sessions are revoked. 
+     * Reset a password using a reset token
+     */
+    postAuthPasswordReset(requestParameters: PostAuthPasswordResetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<MessageResponse>;
+
+    /**
+     * Creates request options for postAuthPasswordResetRequest without sending the request
+     * @param {PasswordResetRequestRequest} passwordResetRequestRequest 
+     * @throws {RequiredError}
+     * @memberof AuthApiInterface
+     */
+    postAuthPasswordResetRequestRequestOpts(requestParameters: PostAuthPasswordResetRequestRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Issues a single-use, expiring password-reset token for the given username. To avoid leaking which usernames exist, the response is always 200 regardless of whether the user exists. In production the token would be emailed; for this demo it is returned in the response body when the user exists. 
+     * @summary Request a password-reset token
+     * @param {PasswordResetRequestRequest} passwordResetRequestRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AuthApiInterface
+     */
+    postAuthPasswordResetRequestRaw(requestParameters: PostAuthPasswordResetRequestRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PasswordResetResponse>>;
+
+    /**
+     * Issues a single-use, expiring password-reset token for the given username. To avoid leaking which usernames exist, the response is always 200 regardless of whether the user exists. In production the token would be emailed; for this demo it is returned in the response body when the user exists. 
+     * Request a password-reset token
+     */
+    postAuthPasswordResetRequest(requestParameters: PostAuthPasswordResetRequestRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PasswordResetResponse>;
 
     /**
      * Creates request options for postAuthRegister without sending the request
@@ -282,6 +394,157 @@ export class AuthApi extends runtime.BaseAPI implements AuthApiInterface {
      */
     async postAuthLogout(requestParameters: PostAuthLogoutRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
         await this.postAuthLogoutRaw(requestParameters, initOverrides);
+    }
+
+    /**
+     * Creates request options for postAuthPasswordChange without sending the request
+     */
+    async postAuthPasswordChangeRequestOpts(requestParameters: PostAuthPasswordChangeRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['passwordChangeRequest'] == null) {
+            throw new runtime.RequiredError(
+                'passwordChangeRequest',
+                'Required parameter "passwordChangeRequest" was null or undefined when calling postAuthPasswordChange().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (requestParameters['xCSRFToken'] != null) {
+            headerParameters['X-CSRF-Token'] = String(requestParameters['xCSRFToken']);
+        }
+
+
+        let urlPath = `/auth/password/change`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: PasswordChangeRequestToJSON(requestParameters['passwordChangeRequest']),
+        };
+    }
+
+    /**
+     * Verifies the current password and sets a new one for the authenticated user. On success the session is rotated (a fresh session id and CSRF token are issued via Set-Cookie) and all other sessions for the user are revoked. Requires a valid session cookie and a matching X-CSRF-Token header. 
+     * Change the current user\'s password
+     */
+    async postAuthPasswordChangeRaw(requestParameters: PostAuthPasswordChangeRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<UserResponse>> {
+        const requestOptions = await this.postAuthPasswordChangeRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => UserResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Verifies the current password and sets a new one for the authenticated user. On success the session is rotated (a fresh session id and CSRF token are issued via Set-Cookie) and all other sessions for the user are revoked. Requires a valid session cookie and a matching X-CSRF-Token header. 
+     * Change the current user\'s password
+     */
+    async postAuthPasswordChange(requestParameters: PostAuthPasswordChangeRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<UserResponse> {
+        const response = await this.postAuthPasswordChangeRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for postAuthPasswordReset without sending the request
+     */
+    async postAuthPasswordResetRequestOpts(requestParameters: PostAuthPasswordResetRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['passwordResetRequest'] == null) {
+            throw new runtime.RequiredError(
+                'passwordResetRequest',
+                'Required parameter "passwordResetRequest" was null or undefined when calling postAuthPasswordReset().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+
+        let urlPath = `/auth/password/reset`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: PasswordResetRequestToJSON(requestParameters['passwordResetRequest']),
+        };
+    }
+
+    /**
+     * Consumes a single-use reset token and sets a new password for the associated user. The token is invalidated on use and all of the user\'s sessions are revoked. 
+     * Reset a password using a reset token
+     */
+    async postAuthPasswordResetRaw(requestParameters: PostAuthPasswordResetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<MessageResponse>> {
+        const requestOptions = await this.postAuthPasswordResetRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => MessageResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Consumes a single-use reset token and sets a new password for the associated user. The token is invalidated on use and all of the user\'s sessions are revoked. 
+     * Reset a password using a reset token
+     */
+    async postAuthPasswordReset(requestParameters: PostAuthPasswordResetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<MessageResponse> {
+        const response = await this.postAuthPasswordResetRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for postAuthPasswordResetRequest without sending the request
+     */
+    async postAuthPasswordResetRequestRequestOpts(requestParameters: PostAuthPasswordResetRequestRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['passwordResetRequestRequest'] == null) {
+            throw new runtime.RequiredError(
+                'passwordResetRequestRequest',
+                'Required parameter "passwordResetRequestRequest" was null or undefined when calling postAuthPasswordResetRequest().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+
+        let urlPath = `/auth/password/reset-request`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: PasswordResetRequestRequestToJSON(requestParameters['passwordResetRequestRequest']),
+        };
+    }
+
+    /**
+     * Issues a single-use, expiring password-reset token for the given username. To avoid leaking which usernames exist, the response is always 200 regardless of whether the user exists. In production the token would be emailed; for this demo it is returned in the response body when the user exists. 
+     * Request a password-reset token
+     */
+    async postAuthPasswordResetRequestRaw(requestParameters: PostAuthPasswordResetRequestRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PasswordResetResponse>> {
+        const requestOptions = await this.postAuthPasswordResetRequestRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => PasswordResetResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Issues a single-use, expiring password-reset token for the given username. To avoid leaking which usernames exist, the response is always 200 regardless of whether the user exists. In production the token would be emailed; for this demo it is returned in the response body when the user exists. 
+     * Request a password-reset token
+     */
+    async postAuthPasswordResetRequest(requestParameters: PostAuthPasswordResetRequestRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PasswordResetResponse> {
+        const response = await this.postAuthPasswordResetRequestRaw(requestParameters, initOverrides);
+        return await response.value();
     }
 
     /**

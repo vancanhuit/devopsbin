@@ -15,6 +15,11 @@ docs/IpResponse.md
 docs/LatencyApi.md
 docs/LivezResponse.md
 docs/LoginRequest.md
+docs/MessageResponse.md
+docs/PasswordChangeRequest.md
+docs/PasswordResetRequest.md
+docs/PasswordResetRequestRequest.md
+docs/PasswordResetResponse.md
 docs/ReadyzResponse.md
 docs/RegisterRequest.md
 docs/RuntimeApi.md
@@ -35,6 +40,11 @@ models/HeadersResponse.ts
 models/IpResponse.ts
 models/LivezResponse.ts
 models/LoginRequest.ts
+models/MessageResponse.ts
+models/PasswordChangeRequest.ts
+models/PasswordResetRequest.ts
+models/PasswordResetRequestRequest.ts
+models/PasswordResetResponse.ts
 models/ReadyzResponse.ts
 models/RegisterRequest.ts
 models/SchemeResponse.ts

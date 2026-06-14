@@ -12,8 +12,9 @@ import (
 // sessionProtectedOps lists the operations that require a valid session. For
 // unsafe HTTP methods among these, a matching CSRF token is also required.
 var sessionProtectedOps = map[string]bool{
-	"PostAuthLogout": true,
-	"GetAuthMe":      true,
+	"PostAuthLogout":         true,
+	"GetAuthMe":              true,
+	"PostAuthPasswordChange": true,
 }
 
 // authMiddleware returns a strict-server middleware that enforces session and

@@ -571,9 +571,11 @@ def check_auth(base_url: str) -> None:
     """Exercise the cookie-session auth flow end to end.
 
     register -> me (200) -> logout without CSRF (403) -> logout with CSRF (204)
-    -> me (401), plus a login with the seeded demo user. This proves bcrypt
-    auth, the session cookie, the session-bound double-submit CSRF guard, and
-    server-side revocation on logout.
+    -> me (401) -> password reset roundtrip (request token, reset, replay 410,
+    login with the new password), plus a login with the seeded demo user. This
+    proves bcrypt auth, the session cookie, the session-bound double-submit CSRF
+    guard, server-side revocation on logout, and single-use password-reset
+    tokens.
     """
     username = f"smoke-{int(time.time() * 1000)}"
     password = "smoke-password"
@@ -650,6 +652,71 @@ def check_auth(base_url: str) -> None:
         f"auth/me (after logout): status {resp.status}, want 401",
     )
     print("[ok] auth/me (after logout) -> 401 (session revoked)")
+
+    # A single-use reset token rotates the registered user's password.
+    resp = http_send(
+        f"{base_url}{API_PREFIX}/auth/password/reset-request",
+        "POST",
+        timeout=5.0,
+        data=json.dumps({"username": username}).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    expect(
+        resp.status == 200,
+        f"auth/password/reset-request: status {resp.status}, want 200",
+    )
+    body = resp.json()
+    reset_token = body.get("token") if isinstance(body, dict) else None
+    expect(
+        isinstance(reset_token, str) and reset_token != "",
+        f"auth/password/reset-request: body {body!r}, want a token",
+    )
+    print("[ok] auth/password/reset-request -> 200 (issues a reset token)")
+
+    new_password = "smoke-password-2"
+    resp = http_send(
+        f"{base_url}{API_PREFIX}/auth/password/reset",
+        "POST",
+        timeout=5.0,
+        data=json.dumps({"token": reset_token, "newPassword": new_password}).encode(
+            "utf-8"
+        ),
+        headers={"Content-Type": "application/json"},
+    )
+    expect(resp.status == 200, f"auth/password/reset: status {resp.status}, want 200")
+    print("[ok] auth/password/reset -> 200 (sets a new password)")
+
+    # The token is single-use: replaying it is rejected with 410 Gone.
+    resp = http_send(
+        f"{base_url}{API_PREFIX}/auth/password/reset",
+        "POST",
+        timeout=5.0,
+        data=json.dumps({"token": reset_token, "newPassword": new_password}).encode(
+            "utf-8"
+        ),
+        headers={"Content-Type": "application/json"},
+    )
+    expect(
+        resp.status == 410,
+        f"auth/password/reset (replay): status {resp.status}, want 410",
+    )
+    print("[ok] auth/password/reset (replay) -> 410 (token is single-use)")
+
+    # The reset password now logs the registered user in.
+    resp = http_send(
+        f"{base_url}{API_PREFIX}/auth/login",
+        "POST",
+        timeout=5.0,
+        data=json.dumps({"username": username, "password": new_password}).encode(
+            "utf-8"
+        ),
+        headers={"Content-Type": "application/json"},
+    )
+    expect(
+        resp.status == 200,
+        f"auth/login (after reset): status {resp.status}, want 200",
+    )
+    print("[ok] auth/login (after reset) -> 200 (reset password works)")
 
     # The seeded demo user can log in with its documented credentials.
     resp = http_send(

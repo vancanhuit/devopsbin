@@ -104,6 +104,94 @@ func (c *Client) Del(ctx context.Context, key string) error {
 	return nil
 }
 
+// GetDel atomically returns the value at key and deletes it, giving a key a
+// single-use semantics (e.g. a one-shot password-reset token). When the key is
+// absent it returns the underlying redis.Nil error; callers distinguish a miss
+// from a failure with IsMiss.
+func (c *Client) GetDel(ctx context.Context, key string) (string, error) {
+	v, err := c.rdb.GetDel(ctx, key).Result()
+	if err != nil {
+		if IsMiss(err) {
+			return "", err
+		}
+		return "", fmt.Errorf("cache: getdel %q: %w", key, err)
+	}
+	return v, nil
+}
+
+// incrWindowScript atomically increments key and, only on the first increment
+// (when the new value is 1), sets its expiry to ARGV[1] milliseconds. This
+// implements a fixed window that starts at the first event and cannot be
+// extended by later increments, avoiding a separate non-atomic EXPIRE call.
+var incrWindowScript = redis.NewScript(`
+local v = redis.call("INCR", KEYS[1])
+if v == 1 then
+	redis.call("PEXPIRE", KEYS[1], ARGV[1])
+end
+return v
+`)
+
+// Incr atomically increments the integer counter at key and returns the new
+// value. On the first increment it sets the key to expire after ttl, so the
+// counter behaves as a fixed window anchored at the first event. A non-positive
+// ttl increments without setting an expiry.
+func (c *Client) Incr(ctx context.Context, key string, ttl time.Duration) (int64, error) {
+	if ttl <= 0 {
+		n, err := c.rdb.Incr(ctx, key).Result()
+		if err != nil {
+			return 0, fmt.Errorf("cache: incr %q: %w", key, err)
+		}
+		return n, nil
+	}
+	n, err := incrWindowScript.Run(ctx, c.rdb, []string{key}, ttl.Milliseconds()).Int64()
+	if err != nil {
+		return 0, fmt.Errorf("cache: incr %q: %w", key, err)
+	}
+	return n, nil
+}
+
+// TTL returns the remaining time to live of key. A missing key or a key with no
+// associated expiry both report a zero duration, so callers can treat "no
+// deadline" uniformly.
+func (c *Client) TTL(ctx context.Context, key string) (time.Duration, error) {
+	d, err := c.rdb.TTL(ctx, key).Result()
+	if err != nil {
+		return 0, fmt.Errorf("cache: ttl %q: %w", key, err)
+	}
+	if d < 0 {
+		return 0, nil
+	}
+	return d, nil
+}
+
+// SAdd adds member to the set at key and refreshes the set's expiry to ttl in a
+// single round trip. Tracking a bounded, self-expiring set (e.g. a user's
+// active session ids) lets callers enumerate and revoke them without scanning
+// the keyspace. A non-positive ttl adds the member without setting an expiry.
+func (c *Client) SAdd(ctx context.Context, key, member string, ttl time.Duration) error {
+	_, err := c.rdb.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+		pipe.SAdd(ctx, key, member)
+		if ttl > 0 {
+			pipe.PExpire(ctx, key, ttl)
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("cache: sadd %q: %w", key, err)
+	}
+	return nil
+}
+
+// SMembers returns the members of the set at key. A missing set returns an
+// empty slice and no error.
+func (c *Client) SMembers(ctx context.Context, key string) ([]string, error) {
+	members, err := c.rdb.SMembers(ctx, key).Result()
+	if err != nil {
+		return nil, fmt.Errorf("cache: smembers %q: %w", key, err)
+	}
+	return members, nil
+}
+
 // Close releases the underlying connection pool. Safe to call on a nil
 // receiver to simplify cleanup paths.
 func (c *Client) Close() error {
