@@ -176,12 +176,16 @@ func (s *Server) sessionCookie(r *http.Request, value string, maxAge int) *http.
 }
 
 // csrfCookie builds the readable (non-HttpOnly) CSRF cookie so the SPA can
-// echo its value in the X-CSRF-Token header. A maxAge of -1 clears it.
+// echo its value in the X-CSRF-Token header. A maxAge of -1 clears it. The
+// cookie is scoped to "/" (not basePath) because the SPA console is served
+// from the site root: a cookie scoped to /api/v1 is invisible to
+// document.cookie on the root document, so the client could never read the
+// token to echo it back, and every state-changing request would fail CSRF.
 func (s *Server) csrfCookie(r *http.Request, value string, maxAge int) *http.Cookie {
 	return &http.Cookie{
 		Name:     s.authSettings.CSRFCookieName,
 		Value:    value,
-		Path:     basePath,
+		Path:     "/",
 		MaxAge:   maxAge,
 		HttpOnly: false,
 		Secure:   requestScheme(r) == "https",

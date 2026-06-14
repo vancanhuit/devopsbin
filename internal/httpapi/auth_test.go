@@ -173,6 +173,14 @@ func (a *authTestServer) do(t *testing.T, method, path string, body any, headers
 	return resp
 }
 
+// doClose runs a request and discards the response body. Used for setup calls
+// (e.g. registering or logging in) where only the side effects matter.
+func (a *authTestServer) doClose(t *testing.T, method, path string, body any, headers map[string]string) {
+	t.Helper()
+	resp := a.do(t, method, path, body, headers)
+	_ = resp.Body.Close()
+}
+
 // csrfToken returns the value of the CSRF cookie currently held by the jar.
 func (a *authTestServer) csrfToken(t *testing.T) string {
 	t.Helper()
@@ -201,7 +209,7 @@ type userBody struct {
 
 func decodeUser(t *testing.T, resp *http.Response) userBody {
 	t.Helper()
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var u userBody
 	if err := json.NewDecoder(resp.Body).Decode(&u); err != nil {
 		t.Fatalf("decode user: %v", err)
@@ -227,6 +235,15 @@ func clearsCookie(resp *http.Response, name string) bool {
 	return false
 }
 
+func cookieByName(resp *http.Response, name string) *http.Cookie {
+	for _, c := range resp.Cookies() {
+		if c.Name == name {
+			return c
+		}
+	}
+	return nil
+}
+
 func TestAuth_Register_Success(t *testing.T) {
 	a := newAuthTestServer(t)
 
@@ -246,12 +263,34 @@ func TestAuth_Register_Success(t *testing.T) {
 	}
 }
 
+// TestAuth_CSRFCookie_RootPath guards against scoping the readable CSRF cookie
+// to /api/v1: the SPA is served from the site root, so a cookie pinned to the
+// API prefix is invisible to document.cookie and the client can never echo the
+// token, making every state-changing request fail CSRF.
+func TestAuth_CSRFCookie_RootPath(t *testing.T) {
+	a := newAuthTestServer(t)
+
+	resp := a.do(t, http.MethodPost, "/api/v1/auth/register", credentials{Username: "alice", Password: "alicepass"}, nil)
+	defer func() { _ = resp.Body.Close() }()
+
+	csrf := cookieByName(resp, csrfCookieName)
+	if csrf == nil {
+		t.Fatal("expected a csrf cookie to be set")
+	}
+	if csrf.Path != "/" {
+		t.Fatalf("csrf cookie path = %q, want %q", csrf.Path, "/")
+	}
+	if csrf.HttpOnly {
+		t.Fatal("csrf cookie must be readable by JS (HttpOnly must be false)")
+	}
+}
+
 func TestAuth_Register_DuplicateUsername(t *testing.T) {
 	a := newAuthTestServer(t)
-	a.do(t, http.MethodPost, "/api/v1/auth/register", credentials{Username: "alice", Password: "alicepass"}, nil).Body.Close()
+	a.doClose(t, http.MethodPost, "/api/v1/auth/register", credentials{Username: "alice", Password: "alicepass"}, nil)
 
 	resp := a.do(t, http.MethodPost, "/api/v1/auth/register", credentials{Username: "alice", Password: "other123"}, nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusConflict {
 		t.Fatalf("status = %d, want 409", resp.StatusCode)
 	}
@@ -260,7 +299,7 @@ func TestAuth_Register_DuplicateUsername(t *testing.T) {
 func TestAuth_Register_MissingFields(t *testing.T) {
 	a := newAuthTestServer(t)
 	resp := a.do(t, http.MethodPost, "/api/v1/auth/register", credentials{Username: "", Password: ""}, nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", resp.StatusCode)
 	}
@@ -268,7 +307,7 @@ func TestAuth_Register_MissingFields(t *testing.T) {
 
 func TestAuth_Login_Success(t *testing.T) {
 	a := newAuthTestServer(t)
-	a.do(t, http.MethodPost, "/api/v1/auth/register", credentials{Username: "alice", Password: "alicepass"}, nil).Body.Close()
+	a.doClose(t, http.MethodPost, "/api/v1/auth/register", credentials{Username: "alice", Password: "alicepass"}, nil)
 
 	resp := a.do(t, http.MethodPost, "/api/v1/auth/login", credentials{Username: "alice", Password: "alicepass"}, nil)
 	if resp.StatusCode != http.StatusOK {
@@ -277,15 +316,15 @@ func TestAuth_Login_Success(t *testing.T) {
 	if !hasCookie(resp, sessionCookieName) || !hasCookie(resp, csrfCookieName) {
 		t.Fatal("expected fresh session and csrf cookies")
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }
 
 func TestAuth_Login_WrongPassword(t *testing.T) {
 	a := newAuthTestServer(t)
-	a.do(t, http.MethodPost, "/api/v1/auth/register", credentials{Username: "alice", Password: "alicepass"}, nil).Body.Close()
+	a.doClose(t, http.MethodPost, "/api/v1/auth/register", credentials{Username: "alice", Password: "alicepass"}, nil)
 
 	resp := a.do(t, http.MethodPost, "/api/v1/auth/login", credentials{Username: "alice", Password: "nope"}, nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401", resp.StatusCode)
 	}
@@ -294,7 +333,7 @@ func TestAuth_Login_WrongPassword(t *testing.T) {
 func TestAuth_Login_UnknownUser(t *testing.T) {
 	a := newAuthTestServer(t)
 	resp := a.do(t, http.MethodPost, "/api/v1/auth/login", credentials{Username: "ghost", Password: "whatever1"}, nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401", resp.StatusCode)
 	}
@@ -303,7 +342,7 @@ func TestAuth_Login_UnknownUser(t *testing.T) {
 func TestAuth_Me_RequiresSession(t *testing.T) {
 	a := newAuthTestServer(t)
 	resp := a.do(t, http.MethodGet, "/api/v1/auth/me", nil, nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401", resp.StatusCode)
 	}
@@ -311,7 +350,7 @@ func TestAuth_Me_RequiresSession(t *testing.T) {
 
 func TestAuth_Me_WithSession(t *testing.T) {
 	a := newAuthTestServer(t)
-	a.do(t, http.MethodPost, "/api/v1/auth/register", credentials{Username: "alice", Password: "alicepass"}, nil).Body.Close()
+	a.doClose(t, http.MethodPost, "/api/v1/auth/register", credentials{Username: "alice", Password: "alicepass"}, nil)
 
 	resp := a.do(t, http.MethodGet, "/api/v1/auth/me", nil, nil)
 	if resp.StatusCode != http.StatusOK {
@@ -326,7 +365,7 @@ func TestAuth_Me_WithSession(t *testing.T) {
 func TestAuth_Logout_RequiresSession(t *testing.T) {
 	a := newAuthTestServer(t)
 	resp := a.do(t, http.MethodPost, "/api/v1/auth/logout", nil, nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401", resp.StatusCode)
 	}
@@ -334,10 +373,10 @@ func TestAuth_Logout_RequiresSession(t *testing.T) {
 
 func TestAuth_Logout_MissingCSRF(t *testing.T) {
 	a := newAuthTestServer(t)
-	a.do(t, http.MethodPost, "/api/v1/auth/register", credentials{Username: "alice", Password: "alicepass"}, nil).Body.Close()
+	a.doClose(t, http.MethodPost, "/api/v1/auth/register", credentials{Username: "alice", Password: "alicepass"}, nil)
 
 	resp := a.do(t, http.MethodPost, "/api/v1/auth/logout", nil, nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403", resp.StatusCode)
 	}
@@ -345,10 +384,10 @@ func TestAuth_Logout_MissingCSRF(t *testing.T) {
 
 func TestAuth_Logout_WrongCSRF(t *testing.T) {
 	a := newAuthTestServer(t)
-	a.do(t, http.MethodPost, "/api/v1/auth/register", credentials{Username: "alice", Password: "alicepass"}, nil).Body.Close()
+	a.doClose(t, http.MethodPost, "/api/v1/auth/register", credentials{Username: "alice", Password: "alicepass"}, nil)
 
 	resp := a.do(t, http.MethodPost, "/api/v1/auth/logout", nil, map[string]string{csrfHeaderName: "wrong-token"})
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403", resp.StatusCode)
 	}
@@ -356,7 +395,7 @@ func TestAuth_Logout_WrongCSRF(t *testing.T) {
 
 func TestAuth_Logout_Success(t *testing.T) {
 	a := newAuthTestServer(t)
-	a.do(t, http.MethodPost, "/api/v1/auth/register", credentials{Username: "alice", Password: "alicepass"}, nil).Body.Close()
+	a.doClose(t, http.MethodPost, "/api/v1/auth/register", credentials{Username: "alice", Password: "alicepass"}, nil)
 
 	token := a.csrfToken(t)
 	if token == "" {
@@ -370,7 +409,7 @@ func TestAuth_Logout_Success(t *testing.T) {
 	if !clearsCookie(resp, sessionCookieName) || !clearsCookie(resp, csrfCookieName) {
 		t.Fatal("expected logout to clear the auth cookies")
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	if a.sessions.count() != 0 {
 		t.Fatalf("expected session deleted on logout, got %d", a.sessions.count())
@@ -378,7 +417,7 @@ func TestAuth_Logout_Success(t *testing.T) {
 
 	// A subsequent /me must be unauthenticated.
 	me := a.do(t, http.MethodGet, "/api/v1/auth/me", nil, nil)
-	defer me.Body.Close()
+	defer func() { _ = me.Body.Close() }()
 	if me.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("post-logout /me status = %d, want 401", me.StatusCode)
 	}
@@ -386,11 +425,11 @@ func TestAuth_Logout_Success(t *testing.T) {
 
 func TestAuth_SafeMethod_SkipsCSRF(t *testing.T) {
 	a := newAuthTestServer(t)
-	a.do(t, http.MethodPost, "/api/v1/auth/register", credentials{Username: "alice", Password: "alicepass"}, nil).Body.Close()
+	a.doClose(t, http.MethodPost, "/api/v1/auth/register", credentials{Username: "alice", Password: "alicepass"}, nil)
 
 	// GET /me is a safe method and must succeed without a CSRF header.
 	resp := a.do(t, http.MethodGet, "/api/v1/auth/me", nil, nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
 	}
@@ -398,10 +437,10 @@ func TestAuth_SafeMethod_SkipsCSRF(t *testing.T) {
 
 func TestAuth_Login_RotatesSession(t *testing.T) {
 	a := newAuthTestServer(t)
-	a.do(t, http.MethodPost, "/api/v1/auth/register", credentials{Username: "alice", Password: "alicepass"}, nil).Body.Close()
+	a.doClose(t, http.MethodPost, "/api/v1/auth/register", credentials{Username: "alice", Password: "alicepass"}, nil)
 	firstToken := a.csrfToken(t)
 
-	a.do(t, http.MethodPost, "/api/v1/auth/login", credentials{Username: "alice", Password: "alicepass"}, nil).Body.Close()
+	a.doClose(t, http.MethodPost, "/api/v1/auth/login", credentials{Username: "alice", Password: "alicepass"}, nil)
 	secondToken := a.csrfToken(t)
 
 	if firstToken == secondToken {
