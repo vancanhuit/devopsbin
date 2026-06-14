@@ -131,6 +131,24 @@ func (e StartupzResponseStatus) Valid() bool {
 	}
 }
 
+// Defines values for UserResponseRole.
+const (
+	Admin UserResponseRole = "admin"
+	User  UserResponseRole = "user"
+)
+
+// Valid indicates whether the value is a known member of the UserResponseRole enum.
+func (e UserResponseRole) Valid() bool {
+	switch e {
+	case Admin:
+		return true
+	case User:
+		return true
+	default:
+		return false
+	}
+}
+
 // DelayResponse defines model for DelayResponse.
 type DelayResponse struct {
 	// Delay The number of seconds the response was delayed.
@@ -198,6 +216,15 @@ type LivezResponse struct {
 // LivezResponseStatus defines model for LivezResponse.Status.
 type LivezResponseStatus string
 
+// LoginRequest defines model for LoginRequest.
+type LoginRequest struct {
+	// Password The account password.
+	Password string `json:"password"`
+
+	// Username The account username.
+	Username string `json:"username"`
+}
+
 // ReadyzResponse defines model for ReadyzResponse.
 type ReadyzResponse struct {
 	Checks map[string]DependencyCheck `json:"checks"`
@@ -206,6 +233,15 @@ type ReadyzResponse struct {
 
 // ReadyzResponseStatus defines model for ReadyzResponse.Status.
 type ReadyzResponseStatus string
+
+// RegisterRequest defines model for RegisterRequest.
+type RegisterRequest struct {
+	// Password The account password (stored only as a bcrypt hash).
+	Password string `json:"password"`
+
+	// Username The unique username for the new account.
+	Username string `json:"username"`
+}
 
 // SchemeResponse defines model for SchemeResponse.
 type SchemeResponse struct {
@@ -239,6 +275,21 @@ type UserAgentResponse struct {
 	UserAgent string `json:"user-agent"`
 }
 
+// UserResponse defines model for UserResponse.
+type UserResponse struct {
+	// Id The user's unique identifier.
+	Id openapi_types.UUID `json:"id"`
+
+	// Role The user's role.
+	Role UserResponseRole `json:"role"`
+
+	// Username The user's username.
+	Username string `json:"username"`
+}
+
+// UserResponseRole The user's role.
+type UserResponseRole string
+
 // UuidResponse defines model for UuidResponse.
 type UuidResponse struct {
 	// Uuid A randomly generated version 4 UUID.
@@ -254,11 +305,20 @@ type VersionResponse struct {
 	Version   string    `json:"version"`
 }
 
+// CsrfTokenHeader defines model for CsrfTokenHeader.
+type CsrfTokenHeader = string
+
 // EchoBodyTooLarge defines model for EchoBodyTooLarge.
 type EchoBodyTooLarge = ErrorResponse
 
 // EchoReflection defines model for EchoReflection.
 type EchoReflection = EchoResponse
+
+// PostAuthLogoutParams defines parameters for PostAuthLogout.
+type PostAuthLogoutParams struct {
+	// XCSRFToken The CSRF token from the devopsbin_csrf cookie. Required in practice on state-changing requests to authenticated routes; a missing or mismatched token yields a 403 response. Must match the token bound to the current session.
+	XCSRFToken *CsrfTokenHeader `json:"X-CSRF-Token,omitempty"`
+}
 
 // DeleteEchoTextBody defines parameters for DeleteEcho.
 type DeleteEchoTextBody = string
@@ -271,6 +331,12 @@ type PostEchoTextBody = string
 
 // PutEchoTextBody defines parameters for PutEcho.
 type PutEchoTextBody = string
+
+// PostAuthLoginJSONRequestBody defines body for PostAuthLogin for application/json ContentType.
+type PostAuthLoginJSONRequestBody = LoginRequest
+
+// PostAuthRegisterJSONRequestBody defines body for PostAuthRegister for application/json ContentType.
+type PostAuthRegisterJSONRequestBody = RegisterRequest
 
 // DeleteEchoTextRequestBody defines body for DeleteEcho for text/plain ContentType.
 type DeleteEchoTextRequestBody = DeleteEchoTextBody
@@ -286,6 +352,18 @@ type PutEchoTextRequestBody = PutEchoTextBody
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// Log in with username and password
+	// (POST /auth/login)
+	PostAuthLogin(w http.ResponseWriter, r *http.Request)
+	// Log out of the current session
+	// (POST /auth/logout)
+	PostAuthLogout(w http.ResponseWriter, r *http.Request, params PostAuthLogoutParams)
+	// Return the current authenticated user
+	// (GET /auth/me)
+	GetAuthMe(w http.ResponseWriter, r *http.Request)
+	// Register a new user
+	// (POST /auth/register)
+	PostAuthRegister(w http.ResponseWriter, r *http.Request)
 	// Delay the response by a given number of seconds
 	// (GET /delay/{seconds})
 	GetDelay(w http.ResponseWriter, r *http.Request, seconds float64)
@@ -339,6 +417,30 @@ type ServerInterface interface {
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
 
 type Unimplemented struct{}
+
+// Log in with username and password
+// (POST /auth/login)
+func (_ Unimplemented) PostAuthLogin(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Log out of the current session
+// (POST /auth/logout)
+func (_ Unimplemented) PostAuthLogout(w http.ResponseWriter, r *http.Request, params PostAuthLogoutParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Return the current authenticated user
+// (GET /auth/me)
+func (_ Unimplemented) GetAuthMe(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Register a new user
+// (POST /auth/register)
+func (_ Unimplemented) PostAuthRegister(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
 
 // Delay the response by a given number of seconds
 // (GET /delay/{seconds})
@@ -444,6 +546,89 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// PostAuthLogin operation middleware
+func (siw *ServerInterfaceWrapper) PostAuthLogin(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostAuthLogin(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostAuthLogout operation middleware
+func (siw *ServerInterfaceWrapper) PostAuthLogout(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PostAuthLogoutParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CsrfTokenHeader
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = &XCSRFToken
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostAuthLogout(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAuthMe operation middleware
+func (siw *ServerInterfaceWrapper) GetAuthMe(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAuthMe(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostAuthRegister operation middleware
+func (siw *ServerInterfaceWrapper) PostAuthRegister(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostAuthRegister(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // GetDelay operation middleware
 func (siw *ServerInterfaceWrapper) GetDelay(w http.ResponseWriter, r *http.Request) {
@@ -807,6 +992,18 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	}
 
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/auth/login", wrapper.PostAuthLogin)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/auth/logout", wrapper.PostAuthLogout)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/auth/me", wrapper.GetAuthMe)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/auth/register", wrapper.PostAuthRegister)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/delay/{seconds}", wrapper.GetDelay)
 	})
 	r.Group(func(r chi.Router) {
@@ -861,6 +1058,213 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 type EchoBodyTooLargeJSONResponse ErrorResponse
 
 type EchoReflectionJSONResponse EchoResponse
+
+type PostAuthLoginRequestObject struct {
+	Body *PostAuthLoginJSONRequestBody
+}
+
+type PostAuthLoginResponseObject interface {
+	VisitPostAuthLoginResponse(w http.ResponseWriter) error
+}
+
+type PostAuthLogin200ResponseHeaders struct {
+	SetCookie *string
+}
+
+type PostAuthLogin200JSONResponse struct {
+	Body    UserResponse
+	Headers PostAuthLogin200ResponseHeaders
+}
+
+func (response PostAuthLogin200JSONResponse) VisitPostAuthLoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.SetCookie != nil {
+		w.Header().Set("Set-Cookie", fmt.Sprint(*response.Headers.SetCookie))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostAuthLogin400JSONResponse ErrorResponse
+
+func (response PostAuthLogin400JSONResponse) VisitPostAuthLoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostAuthLogin401JSONResponse ErrorResponse
+
+func (response PostAuthLogin401JSONResponse) VisitPostAuthLoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostAuthLogoutRequestObject struct {
+	Params PostAuthLogoutParams
+}
+
+type PostAuthLogoutResponseObject interface {
+	VisitPostAuthLogoutResponse(w http.ResponseWriter) error
+}
+
+type PostAuthLogout204ResponseHeaders struct {
+	SetCookie *string
+}
+
+type PostAuthLogout204Response struct {
+	Headers PostAuthLogout204ResponseHeaders
+}
+
+func (response PostAuthLogout204Response) VisitPostAuthLogoutResponse(w http.ResponseWriter) error {
+	if response.Headers.SetCookie != nil {
+		w.Header().Set("Set-Cookie", fmt.Sprint(*response.Headers.SetCookie))
+	}
+	w.WriteHeader(204)
+	return nil
+}
+
+type PostAuthLogout401JSONResponse ErrorResponse
+
+func (response PostAuthLogout401JSONResponse) VisitPostAuthLogoutResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostAuthLogout403JSONResponse ErrorResponse
+
+func (response PostAuthLogout403JSONResponse) VisitPostAuthLogoutResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAuthMeRequestObject struct {
+}
+
+type GetAuthMeResponseObject interface {
+	VisitGetAuthMeResponse(w http.ResponseWriter) error
+}
+
+type GetAuthMe200JSONResponse UserResponse
+
+func (response GetAuthMe200JSONResponse) VisitGetAuthMeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAuthMe401JSONResponse ErrorResponse
+
+func (response GetAuthMe401JSONResponse) VisitGetAuthMeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostAuthRegisterRequestObject struct {
+	Body *PostAuthRegisterJSONRequestBody
+}
+
+type PostAuthRegisterResponseObject interface {
+	VisitPostAuthRegisterResponse(w http.ResponseWriter) error
+}
+
+type PostAuthRegister201ResponseHeaders struct {
+	SetCookie *string
+}
+
+type PostAuthRegister201JSONResponse struct {
+	Body    UserResponse
+	Headers PostAuthRegister201ResponseHeaders
+}
+
+func (response PostAuthRegister201JSONResponse) VisitPostAuthRegisterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.SetCookie != nil {
+		w.Header().Set("Set-Cookie", fmt.Sprint(*response.Headers.SetCookie))
+	}
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostAuthRegister400JSONResponse ErrorResponse
+
+func (response PostAuthRegister400JSONResponse) VisitPostAuthRegisterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostAuthRegister409JSONResponse ErrorResponse
+
+func (response PostAuthRegister409JSONResponse) VisitPostAuthRegisterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
 
 type GetDelayRequestObject struct {
 	Seconds float64 `json:"seconds"`
@@ -1321,6 +1725,18 @@ func (response GetVersion200JSONResponse) VisitGetVersionResponse(w http.Respons
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// Log in with username and password
+	// (POST /auth/login)
+	PostAuthLogin(ctx context.Context, request PostAuthLoginRequestObject) (PostAuthLoginResponseObject, error)
+	// Log out of the current session
+	// (POST /auth/logout)
+	PostAuthLogout(ctx context.Context, request PostAuthLogoutRequestObject) (PostAuthLogoutResponseObject, error)
+	// Return the current authenticated user
+	// (GET /auth/me)
+	GetAuthMe(ctx context.Context, request GetAuthMeRequestObject) (GetAuthMeResponseObject, error)
+	// Register a new user
+	// (POST /auth/register)
+	PostAuthRegister(ctx context.Context, request PostAuthRegisterRequestObject) (PostAuthRegisterResponseObject, error)
 	// Delay the response by a given number of seconds
 	// (GET /delay/{seconds})
 	GetDelay(ctx context.Context, request GetDelayRequestObject) (GetDelayResponseObject, error)
@@ -1398,6 +1814,118 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// PostAuthLogin operation middleware
+func (sh *strictHandler) PostAuthLogin(w http.ResponseWriter, r *http.Request) {
+	var request PostAuthLoginRequestObject
+
+	var body PostAuthLoginJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostAuthLogin(ctx, request.(PostAuthLoginRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostAuthLogin")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostAuthLoginResponseObject); ok {
+		if err := validResponse.VisitPostAuthLoginResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostAuthLogout operation middleware
+func (sh *strictHandler) PostAuthLogout(w http.ResponseWriter, r *http.Request, params PostAuthLogoutParams) {
+	var request PostAuthLogoutRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostAuthLogout(ctx, request.(PostAuthLogoutRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostAuthLogout")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostAuthLogoutResponseObject); ok {
+		if err := validResponse.VisitPostAuthLogoutResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAuthMe operation middleware
+func (sh *strictHandler) GetAuthMe(w http.ResponseWriter, r *http.Request) {
+	var request GetAuthMeRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAuthMe(ctx, request.(GetAuthMeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAuthMe")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAuthMeResponseObject); ok {
+		if err := validResponse.VisitGetAuthMeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostAuthRegister operation middleware
+func (sh *strictHandler) PostAuthRegister(w http.ResponseWriter, r *http.Request) {
+	var request PostAuthRegisterRequestObject
+
+	var body PostAuthRegisterJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostAuthRegister(ctx, request.(PostAuthRegisterRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostAuthRegister")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostAuthRegisterResponseObject); ok {
+		if err := validResponse.VisitPostAuthRegisterResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // GetDelay operation middleware
@@ -1833,51 +2361,68 @@ func (sh *strictHandler) GetVersion(w http.ResponseWriter, r *http.Request) {
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
+	"c6LKKGfa4gYKKbQ1AffWsRMGDrXvbu7+PwAA//8=",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

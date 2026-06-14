@@ -17,6 +17,12 @@ tags:
     description: Endpoints that return a caller-specified HTTP status code.
   - name: Latency
     description: Endpoints that introduce an artificial, bounded response delay.
+  - name: Auth
+    description: >
+      Cookie-session authentication: registration, login, logout, and the
+      current-session probe. State-changing requests on authenticated routes
+      require a session cookie and a matching X-CSRF-Token header (double-submit
+      CSRF protection).
 
 paths:
   /livez:
@@ -317,7 +323,164 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /auth/register:
+    post:
+      operationId: postAuthRegister
+      tags:
+        - Auth
+      summary: Register a new user
+      description: >
+        Creates a user with the given username and password and opens an
+        authenticated session: the response sets the session and CSRF cookies.
+        A starter account is created for the new user in the same transaction.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: >
+            The user was created and a session was opened. The session and CSRF
+            cookies are set via Set-Cookie.
+          headers:
+            Set-Cookie:
+              description: Sets the session and CSRF cookies.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        "400":
+          description: The request body is missing or malformed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: The username is already taken.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/login:
+    post:
+      operationId: postAuthLogin
+      tags:
+        - Auth
+      summary: Log in with username and password
+      description: >
+        Verifies the credentials and opens an authenticated session: the
+        response sets the session and CSRF cookies. A successful login rotates
+        the session, issuing a fresh session id and CSRF token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: >
+            The credentials were valid and a session was opened. The session and
+            CSRF cookies are set via Set-Cookie.
+          headers:
+            Set-Cookie:
+              description: Sets the session and CSRF cookies.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        "400":
+          description: The request body is missing or malformed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: The username or password is incorrect.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/logout:
+    post:
+      operationId: postAuthLogout
+      tags:
+        - Auth
+      summary: Log out of the current session
+      description: >
+        Deletes the current session and clears the session and CSRF cookies.
+        Requires a valid session cookie and a matching X-CSRF-Token header.
+      parameters:
+        - $ref: "#/components/parameters/CsrfTokenHeader"
+      responses:
+        "204":
+          description: >
+            The session was deleted and the session and CSRF cookies were
+            cleared via Set-Cookie.
+          headers:
+            Set-Cookie:
+              description: Clears the session and CSRF cookies.
+              schema:
+                type: string
+        "401":
+          description: No valid session is present.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: The CSRF token is missing or does not match the session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/me:
+    get:
+      operationId: getAuthMe
+      tags:
+        - Auth
+      summary: Return the current authenticated user
+      description: >
+        Returns the user associated with the current session. Requires a valid
+        session cookie.
+      responses:
+        "200":
+          description: The current authenticated user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        "401":
+          description: No valid session is present.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
+  parameters:
+    CsrfTokenHeader:
+      name: X-CSRF-Token
+      in: header
+      required: false
+      description: >
+        The CSRF token from the devopsbin_csrf cookie. Required in practice on
+        state-changing requests to authenticated routes; a missing or
+        mismatched token yields a 403 response. Must match the token bound to
+        the current session.
+      schema:
+        type: string
+      example: 9f1c2a7b6e4d4f0a8c3b1d2e5f6a7b8c
+
   requestBodies:
     EchoBody:
       description: >
@@ -598,3 +761,66 @@ components:
           format: double
           description: The number of seconds the response was delayed.
           example: 1
+
+    RegisterRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 32
+          description: The unique username for the new account.
+          example: alice
+        password:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 128
+          description: The account password (stored only as a bcrypt hash).
+          example: alicepass
+
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+          description: The account username.
+          example: alice
+        password:
+          type: string
+          format: password
+          description: The account password.
+          example: alicepass
+
+    UserResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - username
+        - role
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The user's unique identifier.
+          example: 018f9d6b-cbbf-7b2d-9b5d-ab8dfbbd4bed
+        username:
+          type: string
+          description: The user's username.
+          example: alice
+        role:
+          type: string
+          enum:
+            - user
+            - admin
+          description: The user's role.
+          example: user

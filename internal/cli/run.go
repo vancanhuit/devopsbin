@@ -14,6 +14,7 @@ import (
 	"github.com/urfave/cli/v3"
 
 	openapispec "github.com/vancanhuit/devopsbin/api"
+	"github.com/vancanhuit/devopsbin/internal/auth"
 	"github.com/vancanhuit/devopsbin/internal/cache"
 	"github.com/vancanhuit/devopsbin/internal/config"
 	"github.com/vancanhuit/devopsbin/internal/httpapi"
@@ -82,6 +83,13 @@ func newRunCmd() *cli.Command {
 				return err
 			}
 
+			sessions := auth.NewManager(
+				rdb,
+				cache.IsMiss,
+				cfg.Auth.SessionIdleTTL,
+				cfg.Auth.SessionAbsoluteTTL,
+			)
+
 			api := httpapi.NewServer(
 				httpapi.WithLogger(logger),
 				httpapi.WithSPA(web.DistFS(), indexHTML),
@@ -99,6 +107,12 @@ func newRunCmd() *cli.Command {
 				httpapi.WithStartupCheck("redis", httpapi.PingCheck(rdb, dependencyCheckTimeout)),
 				httpapi.WithRequestTimeout(cfg.Http.RequestTimeout),
 				httpapi.WithTrustedProxies(trustedProxies),
+				httpapi.WithAuth(db, sessions, httpapi.AuthSettings{
+					BcryptCost:         cfg.Auth.BcryptCost,
+					SessionCookieName:  cfg.Auth.SessionCookieName,
+					CSRFCookieName:     cfg.Auth.CSRFCookieName,
+					SessionAbsoluteTTL: cfg.Auth.SessionAbsoluteTTL,
+				}),
 			)
 
 			srv := &http.Server{

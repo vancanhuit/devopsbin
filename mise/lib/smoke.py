@@ -95,6 +95,7 @@ class Response:
     body: bytes
     content_type: str
     location: str = ""
+    set_cookies: tuple[str, ...] = ()
 
     def json(self) -> object:
         return json.loads(self.body)
@@ -165,6 +166,7 @@ def http_get(
                 body=resp.read(),
                 content_type=resp.headers.get("Content-Type", ""),
                 location=resp.headers.get("Location", ""),
+                set_cookies=tuple(resp.headers.get_all("Set-Cookie") or []),
             )
     except urllib.error.HTTPError as exc:
         # Non-2xx (including redirects when not followed) still carries a status,
@@ -174,6 +176,9 @@ def http_get(
             body=exc.read(),
             content_type=exc.headers.get("Content-Type", "") if exc.headers else "",
             location=exc.headers.get("Location", "") if exc.headers else "",
+            set_cookies=tuple(exc.headers.get_all("Set-Cookie") or [])
+            if exc.headers
+            else (),
         )
     if log:
         _log_exchange("GET", url, headers, response)
@@ -204,6 +209,7 @@ def http_send(
                 body=resp.read(),
                 content_type=resp.headers.get("Content-Type", ""),
                 location=resp.headers.get("Location", ""),
+                set_cookies=tuple(resp.headers.get_all("Set-Cookie") or []),
             )
     except urllib.error.HTTPError as exc:
         response = Response(
@@ -211,6 +217,9 @@ def http_send(
             body=exc.read(),
             content_type=exc.headers.get("Content-Type", "") if exc.headers else "",
             location=exc.headers.get("Location", "") if exc.headers else "",
+            set_cookies=tuple(exc.headers.get_all("Set-Cookie") or [])
+            if exc.headers
+            else (),
         )
     if log:
         _log_exchange(method, url, headers, response)
@@ -531,6 +540,134 @@ def check_docs_ui(base_url: str, prefix: str, marker: str) -> None:
     print(f"[ok] {prefix} -> 301 -> {prefix}/ 200 text/html")
 
 
+# The default cookie names the backend issues; mirror the AUTH_* defaults so the
+# probe reads the CSRF token and tracks the session cookie.
+SESSION_COOKIE = "devopsbin_session"
+CSRF_COOKIE = "devopsbin_csrf"
+
+
+def _update_cookies(jar: dict[str, str], resp: Response) -> None:
+    """Merge a response's Set-Cookie headers into the cookie jar.
+
+    A cookie cleared by the server (empty value, as logout does) is removed from
+    the jar so subsequent requests stop sending it.
+    """
+    for raw in resp.set_cookies:
+        name_value = raw.split(";", 1)[0].strip()
+        if "=" not in name_value:
+            continue
+        name, value = name_value.split("=", 1)
+        if value == "":
+            jar.pop(name, None)
+        else:
+            jar[name] = value
+
+
+def _cookie_header(jar: dict[str, str]) -> str:
+    return "; ".join(f"{name}={value}" for name, value in jar.items())
+
+
+def check_auth(base_url: str) -> None:
+    """Exercise the cookie-session auth flow end to end.
+
+    register -> me (200) -> logout without CSRF (403) -> logout with CSRF (204)
+    -> me (401), plus a login with the seeded demo user. This proves bcrypt
+    auth, the session cookie, the session-bound double-submit CSRF guard, and
+    server-side revocation on logout.
+    """
+    username = f"smoke-{int(time.time() * 1000)}"
+    password = "smoke-password"
+    jar: dict[str, str] = {}
+
+    # register opens an authenticated session and sets both cookies.
+    resp = http_send(
+        f"{base_url}{API_PREFIX}/auth/register",
+        "POST",
+        timeout=5.0,
+        data=json.dumps({"username": username, "password": password}).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    expect(resp.status == 201, f"auth/register: status {resp.status}, want 201")
+    body = resp.json()
+    expect(
+        isinstance(body, dict) and body.get("username") == username,
+        f"auth/register: body {body!r}, want username={username!r}",
+    )
+    _update_cookies(jar, resp)
+    expect(
+        SESSION_COOKIE in jar and CSRF_COOKIE in jar,
+        f"auth/register: cookies {sorted(jar)!r}, want session and csrf cookies",
+    )
+    csrf_token = jar[CSRF_COOKIE]
+    print("[ok] auth/register -> 201 (sets session + csrf cookies)")
+
+    # me returns the freshly-registered identity for the session cookie.
+    resp = http_get(
+        f"{base_url}{API_PREFIX}/auth/me",
+        timeout=5.0,
+        headers={"Cookie": _cookie_header(jar)},
+    )
+    expect(resp.status == 200, f"auth/me: status {resp.status}, want 200")
+    body = resp.json()
+    expect(
+        isinstance(body, dict) and body.get("username") == username,
+        f"auth/me: body {body!r}, want username={username!r}",
+    )
+    print("[ok] auth/me -> 200 (returns the session user)")
+
+    # logout without the CSRF header is rejected by the double-submit guard.
+    resp = http_send(
+        f"{base_url}{API_PREFIX}/auth/logout",
+        "POST",
+        timeout=5.0,
+        headers={"Cookie": _cookie_header(jar)},
+    )
+    expect(
+        resp.status == 403,
+        f"auth/logout (no csrf): status {resp.status}, want 403",
+    )
+    print("[ok] auth/logout (no CSRF) -> 403 (double-submit guard)")
+
+    # logout with the matching CSRF header succeeds and clears the cookies.
+    resp = http_send(
+        f"{base_url}{API_PREFIX}/auth/logout",
+        "POST",
+        timeout=5.0,
+        headers={"Cookie": _cookie_header(jar), "X-CSRF-Token": csrf_token},
+    )
+    expect(resp.status == 204, f"auth/logout: status {resp.status}, want 204")
+    _update_cookies(jar, resp)
+    print("[ok] auth/logout -> 204 (revokes session, clears cookies)")
+
+    # The revoked session no longer authenticates /auth/me.
+    resp = http_get(
+        f"{base_url}{API_PREFIX}/auth/me",
+        timeout=5.0,
+        headers={"Cookie": f"{SESSION_COOKIE}={csrf_token}"},
+    )
+    expect(
+        resp.status == 401,
+        f"auth/me (after logout): status {resp.status}, want 401",
+    )
+    print("[ok] auth/me (after logout) -> 401 (session revoked)")
+
+    # The seeded demo user can log in with its documented credentials.
+    resp = http_send(
+        f"{base_url}{API_PREFIX}/auth/login",
+        "POST",
+        timeout=5.0,
+        data=json.dumps({"username": "alice", "password": "alicepass"}).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    expect(resp.status == 200, f"auth/login (alice): status {resp.status}, want 200")
+    body = resp.json()
+    expect(
+        isinstance(body, dict) and body.get("username") == "alice",
+        f"auth/login (alice): body {body!r}, want username='alice'",
+    )
+    print("[ok] auth/login (alice) -> 200 (seeded demo user)")
+
+
 def run_checks(base_url: str, timeout: float, expected_scheme: str = "http") -> None:
     """Run the full probe suite against a running stack."""
     print(f"Waiting for API at {base_url} ...")
@@ -548,6 +685,7 @@ def run_checks(base_url: str, timeout: float, expected_scheme: str = "http") -> 
     check_echo(base_url)
     check_status(base_url)
     check_delay(base_url)
+    check_auth(base_url)
     check_spa(base_url)
     check_openapi_spec(base_url)
     check_docs_ui(base_url, "/swagger", "swagger-ui")

@@ -109,6 +109,30 @@ type PostgresConfig struct {
 	URL string `env:"URL" envDefault:"postgres://user:password@localhost:5432/dbname?sslmode=disable" json:"url"`
 }
 
+// bcrypt cost bounds mirror golang.org/x/crypto/bcrypt's MinCost and MaxCost.
+// They are inlined here so the config package need not import bcrypt.
+const (
+	bcryptMinCost = 4
+	bcryptMaxCost = 31
+)
+
+type AuthConfig struct {
+	// BcryptCost is the bcrypt work factor used to hash passwords. Higher costs
+	// are slower to compute and to attack; 12 is a sensible production default.
+	BcryptCost int `env:"BCRYPT_COST" envDefault:"12" json:"bcrypt_cost"`
+	// SessionIdleTTL is the sliding inactivity window: a session expires this
+	// long after its last use. Each authenticated request refreshes it.
+	SessionIdleTTL time.Duration `env:"SESSION_IDLE_TTL" envDefault:"30m" json:"session_idle_ttl"`
+	// SessionAbsoluteTTL caps the total lifetime of a session regardless of
+	// activity; once exceeded the session is rejected and deleted.
+	SessionAbsoluteTTL time.Duration `env:"SESSION_ABSOLUTE_TTL" envDefault:"12h" json:"session_absolute_ttl"`
+	// SessionCookieName is the name of the HttpOnly session cookie.
+	SessionCookieName string `env:"SESSION_COOKIE_NAME" envDefault:"devopsbin_session" json:"session_cookie_name"`
+	// CSRFCookieName is the name of the readable (non-HttpOnly) CSRF cookie used
+	// for the double-submit defense.
+	CSRFCookieName string `env:"CSRF_COOKIE_NAME" envDefault:"devopsbin_csrf" json:"csrf_cookie_name"`
+}
+
 type RedisConfig struct {
 	// Mode selects the client topology: standalone, cluster, or sentinel.
 	Mode RedisMode `env:"MODE" envDefault:"standalone" json:"mode"`
@@ -136,6 +160,7 @@ type Config struct {
 	Http     HttpConfig     `envPrefix:"HTTP_"`
 	Postgres PostgresConfig `envPrefix:"POSTGRES_"`
 	Redis    RedisConfig    `envPrefix:"REDIS_"`
+	Auth     AuthConfig     `envPrefix:"AUTH_"`
 }
 
 // Load reads the configuration from environment variables and applies the
@@ -195,6 +220,10 @@ func (c Config) Validate() error {
 	}
 
 	if _, err := c.Http.TrustedProxyPrefixes(); err != nil {
+		return err
+	}
+
+	if err := c.Auth.Validate(); err != nil {
 		return err
 	}
 
@@ -265,6 +294,34 @@ func (r RedisConfig) Validate() error {
 		}
 	}
 
+	return nil
+}
+
+// Validate checks the authentication settings.
+func (a AuthConfig) Validate() error {
+	if a.BcryptCost < bcryptMinCost || a.BcryptCost > bcryptMaxCost {
+		return fmt.Errorf("config: bcrypt_cost must be in the range %d-%d, got %d",
+			bcryptMinCost, bcryptMaxCost, a.BcryptCost)
+	}
+	if a.SessionIdleTTL <= 0 {
+		return fmt.Errorf("config: session_idle_ttl must be positive")
+	}
+	if a.SessionAbsoluteTTL <= 0 {
+		return fmt.Errorf("config: session_absolute_ttl must be positive")
+	}
+	if a.SessionAbsoluteTTL < a.SessionIdleTTL {
+		return fmt.Errorf("config: session_absolute_ttl (%s) must be >= session_idle_ttl (%s)",
+			a.SessionAbsoluteTTL, a.SessionIdleTTL)
+	}
+	if a.SessionCookieName == "" {
+		return fmt.Errorf("config: session_cookie_name must not be empty")
+	}
+	if a.CSRFCookieName == "" {
+		return fmt.Errorf("config: csrf_cookie_name must not be empty")
+	}
+	if a.SessionCookieName == a.CSRFCookieName {
+		return fmt.Errorf("config: session_cookie_name and csrf_cookie_name must differ")
+	}
 	return nil
 }
 

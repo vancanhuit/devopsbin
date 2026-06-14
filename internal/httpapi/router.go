@@ -23,8 +23,9 @@ const defaultRequestTimeout = 60 * time.Second
 // back to slog.Default(). requestTimeout bounds request handling; values <= 0
 // fall back to defaultRequestTimeout. trustedProxies lists reverse-proxy CIDR
 // prefixes whose forwarded headers are honored; an empty list disables
-// forwarded-header handling.
-func NewRouter(si StrictServerInterface, logger *slog.Logger, requestTimeout time.Duration, trustedProxies []netip.Prefix) chi.Router {
+// forwarded-header handling. strictMiddlewares are applied to every strict
+// operation (e.g. session/CSRF enforcement) and may be nil.
+func NewRouter(si StrictServerInterface, logger *slog.Logger, requestTimeout time.Duration, trustedProxies []netip.Prefix, strictMiddlewares []StrictMiddlewareFunc) chi.Router {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -42,7 +43,7 @@ func NewRouter(si StrictServerInterface, logger *slog.Logger, requestTimeout tim
 	r.Use(withRequest)
 	r.Use(middleware.Timeout(requestTimeout))
 
-	handler := NewStrictHandler(si, nil)
+	handler := NewStrictHandler(si, strictMiddlewares)
 	HandlerWithOptions(handler, ChiServerOptions{
 		BaseURL:    basePath,
 		BaseRouter: r,
@@ -101,7 +102,7 @@ func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 // served at `/` alongside the API. When configured with WithDocs, the OpenAPI
 // document and the Swagger UI / Redoc consoles are served too.
 func (s *Server) Handler() http.Handler {
-	r := NewRouter(s, s.logger, s.requestTimeout, s.trustedProxies)
+	r := NewRouter(s, s.logger, s.requestTimeout, s.trustedProxies, s.strictMiddlewares())
 	if s.docsSpec != nil {
 		mountDocs(r, s.docsSpec, s.build.Version, s.swaggerFS, s.redocFS)
 	}
@@ -109,4 +110,14 @@ func (s *Server) Handler() http.Handler {
 		mountSPA(r, s.spaFS, s.spaIndex, s.logger)
 	}
 	return r
+}
+
+// strictMiddlewares returns the strict-server middlewares applied to every
+// operation. The session/CSRF middleware is included only when auth is
+// configured, so servers without auth (e.g. in unit tests) are unaffected.
+func (s *Server) strictMiddlewares() []StrictMiddlewareFunc {
+	if s.sessions == nil {
+		return nil
+	}
+	return []StrictMiddlewareFunc{s.authMiddleware()}
 }

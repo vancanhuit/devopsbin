@@ -7,6 +7,9 @@ import (
 	"net/netip"
 	"runtime"
 	"time"
+
+	"github.com/vancanhuit/devopsbin/internal/auth"
+	"github.com/vancanhuit/devopsbin/internal/store"
 )
 
 // Check inspects a single dependency and reports its current state. It is used
@@ -23,6 +26,27 @@ type BuildInfo struct {
 	GoVersion string
 }
 
+// userStore is the subset of persistence the auth handlers need. The concrete
+// *store.Store satisfies it; tests can substitute a fake.
+type userStore interface {
+	RegisterUser(ctx context.Context, params store.NewUser) (store.User, error)
+	UserByUsername(ctx context.Context, username string) (store.UserWithHash, error)
+}
+
+// AuthSettings configures the auth handlers and cookies.
+type AuthSettings struct {
+	// BcryptCost is the work factor used to hash new passwords.
+	BcryptCost int
+	// SessionCookieName names the HttpOnly session cookie.
+	SessionCookieName string
+	// CSRFCookieName names the readable CSRF cookie.
+	CSRFCookieName string
+	// SessionAbsoluteTTL caps the session lifetime and is used as the cookie
+	// Max-Age so the browser discards the cookies no later than the server
+	// expires the session.
+	SessionAbsoluteTTL time.Duration
+}
+
 // Server is a concrete implementation of StrictServerInterface backing the
 // runtime, health probe, and build metadata endpoints.
 type Server struct {
@@ -37,6 +61,9 @@ type Server struct {
 	startupChecks  map[string]Check
 	requestTimeout time.Duration
 	trustedProxies []netip.Prefix
+	users          userStore
+	sessions       *auth.Manager
+	authSettings   AuthSettings
 }
 
 // Option configures a Server.
@@ -109,6 +136,18 @@ func WithRequestTimeout(d time.Duration) Option {
 func WithTrustedProxies(prefixes []netip.Prefix) Option {
 	return func(s *Server) {
 		s.trustedProxies = prefixes
+	}
+}
+
+// WithAuth wires the user store, session manager, and auth settings used by the
+// authentication endpoints and the session/CSRF middleware. When unset, the
+// auth endpoints are registered but their dependencies are nil; callers that
+// serve the API must configure auth.
+func WithAuth(users userStore, sessions *auth.Manager, settings AuthSettings) Option {
+	return func(s *Server) {
+		s.users = users
+		s.sessions = sessions
+		s.authSettings = settings
 	}
 }
 

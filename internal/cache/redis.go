@@ -13,6 +13,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 
@@ -69,6 +70,38 @@ func New(cfg config.RedisConfig) (*Client, error) {
 // Ping verifies Redis is reachable, making it suitable as a readiness check.
 func (c *Client) Ping(ctx context.Context) error {
 	return c.rdb.Ping(ctx).Err()
+}
+
+// Set stores value at key with an expiry. A non-positive ttl stores the key
+// without an expiry; callers should always pass a positive ttl so keys cannot
+// live forever.
+func (c *Client) Set(ctx context.Context, key, value string, ttl time.Duration) error {
+	if err := c.rdb.Set(ctx, key, value, ttl).Err(); err != nil {
+		return fmt.Errorf("cache: set %q: %w", key, err)
+	}
+	return nil
+}
+
+// Get returns the value stored at key. When the key is absent it returns the
+// underlying redis.Nil error; callers distinguish a miss from a failure with
+// IsMiss.
+func (c *Client) Get(ctx context.Context, key string) (string, error) {
+	v, err := c.rdb.Get(ctx, key).Result()
+	if err != nil {
+		if IsMiss(err) {
+			return "", err
+		}
+		return "", fmt.Errorf("cache: get %q: %w", key, err)
+	}
+	return v, nil
+}
+
+// Del removes key. Deleting a missing key is not an error.
+func (c *Client) Del(ctx context.Context, key string) error {
+	if err := c.rdb.Del(ctx, key).Err(); err != nil {
+		return fmt.Errorf("cache: del %q: %w", key, err)
+	}
+	return nil
 }
 
 // Close releases the underlying connection pool. Safe to call on a nil

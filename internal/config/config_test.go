@@ -43,6 +43,11 @@ var envKeys = []string{
 	"REDIS_USERNAME",
 	"REDIS_PASSWORD",
 	"REDIS_TLS",
+	"AUTH_BCRYPT_COST",
+	"AUTH_SESSION_IDLE_TTL",
+	"AUTH_SESSION_ABSOLUTE_TTL",
+	"AUTH_SESSION_COOKIE_NAME",
+	"AUTH_CSRF_COOKIE_NAME",
 }
 
 func clearEnv(t *testing.T) {
@@ -55,6 +60,18 @@ func clearEnv(t *testing.T) {
 		if err := os.Unsetenv(k); err != nil {
 			t.Fatalf("unset %s: %v", k, err)
 		}
+	}
+}
+
+// validAuth returns an AuthConfig with valid settings for use as a base in
+// validation tests that exercise other sections.
+func validAuth() config.AuthConfig {
+	return config.AuthConfig{
+		BcryptCost:         12,
+		SessionIdleTTL:     30 * time.Minute,
+		SessionAbsoluteTTL: 12 * time.Hour,
+		SessionCookieName:  "devopsbin_session",
+		CSRFCookieName:     "devopsbin_csrf",
 	}
 }
 
@@ -151,6 +168,13 @@ func TestLoad_EnvOverrides(t *testing.T) {
 			Password: "s3cret",
 			TLS:      true,
 		},
+		Auth: config.AuthConfig{
+			BcryptCost:         12,
+			SessionIdleTTL:     30 * time.Minute,
+			SessionAbsoluteTTL: 12 * time.Hour,
+			SessionCookieName:  "devopsbin_session",
+			CSRFCookieName:     "devopsbin_csrf",
+		},
 	}
 	if !reflect.DeepEqual(cfg, want) {
 		t.Errorf("cfg = %+v\nwant %+v", cfg, want)
@@ -172,6 +196,7 @@ func TestValidate(t *testing.T) {
 			App:   config.AppConfig{LogLevel: "info"},
 			Http:  config.HttpConfig{Addr: ":8080", ReadTimeout: time.Second, WriteTimeout: time.Second, IdleTimeout: time.Second, ShutdownTimeout: time.Second, RequestTimeout: time.Second},
 			Redis: config.RedisConfig{Mode: config.RedisStandalone, Addrs: []string{"localhost:6379"}},
+			Auth:  validAuth(),
 		}
 	}
 
@@ -181,6 +206,17 @@ func TestValidate(t *testing.T) {
 		wantErr bool
 	}{
 		{"valid", func(*config.Config) {}, false},
+		{"bcrypt cost too low", func(c *config.Config) { c.Auth.BcryptCost = 3 }, true},
+		{"bcrypt cost too high", func(c *config.Config) { c.Auth.BcryptCost = 32 }, true},
+		{"zero session idle ttl", func(c *config.Config) { c.Auth.SessionIdleTTL = 0 }, true},
+		{"zero session absolute ttl", func(c *config.Config) { c.Auth.SessionAbsoluteTTL = 0 }, true},
+		{"absolute ttl below idle ttl", func(c *config.Config) {
+			c.Auth.SessionIdleTTL = 2 * time.Hour
+			c.Auth.SessionAbsoluteTTL = time.Hour
+		}, true},
+		{"empty session cookie name", func(c *config.Config) { c.Auth.SessionCookieName = "" }, true},
+		{"empty csrf cookie name", func(c *config.Config) { c.Auth.CSRFCookieName = "" }, true},
+		{"identical cookie names", func(c *config.Config) { c.Auth.CSRFCookieName = c.Auth.SessionCookieName }, true},
 		{"empty addr", func(c *config.Config) { c.Http.Addr = "" }, true},
 		{"zero read timeout", func(c *config.Config) { c.Http.ReadTimeout = 0 }, true},
 		{"zero write timeout", func(c *config.Config) { c.Http.WriteTimeout = 0 }, true},
@@ -246,6 +282,7 @@ func TestValidate_TLS(t *testing.T) {
 			App:   config.AppConfig{LogLevel: "info"},
 			Http:  config.HttpConfig{Addr: ":8080", ReadTimeout: time.Second, WriteTimeout: time.Second, IdleTimeout: time.Second, ShutdownTimeout: time.Second, RequestTimeout: time.Second},
 			Redis: config.RedisConfig{Mode: config.RedisStandalone, Addrs: []string{"localhost:6379"}},
+			Auth:  validAuth(),
 		}
 	}
 
@@ -349,6 +386,7 @@ func TestValidate_MTLS(t *testing.T) {
 			App:   config.AppConfig{LogLevel: "info"},
 			Http:  config.HttpConfig{Addr: ":8080", ReadTimeout: time.Second, WriteTimeout: time.Second, IdleTimeout: time.Second, ShutdownTimeout: time.Second, RequestTimeout: time.Second},
 			Redis: config.RedisConfig{Mode: config.RedisStandalone, Addrs: []string{"localhost:6379"}},
+			Auth:  validAuth(),
 		}
 	}
 
@@ -412,6 +450,7 @@ func TestValidate_TrustedProxies(t *testing.T) {
 			App:   config.AppConfig{LogLevel: "info"},
 			Http:  config.HttpConfig{Addr: ":8080", ReadTimeout: time.Second, WriteTimeout: time.Second, IdleTimeout: time.Second, ShutdownTimeout: time.Second, RequestTimeout: time.Second},
 			Redis: config.RedisConfig{Mode: config.RedisStandalone, Addrs: []string{"localhost:6379"}},
+			Auth:  validAuth(),
 		}
 	}
 

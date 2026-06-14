@@ -2,11 +2,26 @@
   import { onMount } from 'svelte'
   import EndpointCard from './lib/EndpointCard.svelte'
   import Footer from './lib/Footer.svelte'
-  import { endpoints, getVersion } from './lib/api'
+  import Session from './lib/Session.svelte'
+  import { endpoints, getVersion, type Endpoint } from './lib/api'
+  import { auth } from './lib/auth.svelte'
 
   let version: string | null = $state(null)
 
+  // groups orders endpoints by their tag, preserving first-seen tag order, so
+  // the console renders one labeled section per tag.
+  const groups = (() => {
+    const ordered: { tag: string; items: Endpoint[] }[] = []
+    for (const ep of endpoints) {
+      const bucket = ordered.find((g) => g.tag === ep.tag)
+      if (bucket) bucket.items.push(ep)
+      else ordered.push({ tag: ep.tag, items: [ep] })
+    }
+    return ordered
+  })()
+
   onMount(async () => {
+    void auth.hydrate()
     try {
       const info = await getVersion()
       version = info.version
@@ -34,18 +49,35 @@
       </div>
     </header>
 
-    <main class="grid gap-5 sm:grid-cols-2">
-      {#each endpoints as ep (ep.path)}
-        <EndpointCard
-          method={ep.method}
-          path={ep.path}
-          title={ep.title}
-          description={ep.description}
-          expectedStatuses={ep.expectedStatuses}
-          params={ep.params}
-          methods={ep.methods}
-          supportsQuery={ep.supportsQuery}
-        />
+    <div class="mb-10">
+      <Session />
+    </div>
+
+    <main class="flex flex-col gap-10">
+      {#each groups as group (group.tag)}
+        <section>
+          <h2 class="mb-4 text-sm font-semibold tracking-wide text-slate-400 uppercase">
+            {group.tag}
+          </h2>
+          <div class="grid gap-5 sm:grid-cols-2">
+            {#each group.items as ep (ep.path)}
+              <EndpointCard
+                method={ep.method}
+                path={ep.path}
+                title={ep.title}
+                description={ep.description}
+                expectedStatuses={ep.expectedStatuses}
+                params={ep.params}
+                bodyFields={ep.bodyFields}
+                methods={ep.methods}
+                supportsQuery={ep.supportsQuery}
+                requiresAuth={ep.requiresAuth}
+                requiresRole={ep.requiresRole}
+                resultHeaders={ep.resultHeaders}
+              />
+            {/each}
+          </div>
+        </section>
       {/each}
     </main>
   </div>
