@@ -22,30 +22,35 @@ x-redis-base: &redis-base
 # only overrides the topology-specific environment, ports, depends_on, and
 # network.
 x-api-base: &api-base
-  # A single shared image tag so Compose builds the binary image exactly once
-  # and every service (api, the one-shot migrate, and the per-profile tls/mtls
-  # variants) reuses it. Without an explicit image name Compose derives one per
-  # service and builds each separately; when two such services share a profile
-  # they build concurrently and race to export the same local BuildKit cache
-  # (cache_to below), corrupting .cache/buildx. One image name collapses that to
-  # a single build.
+  # The shared image tag every api-flavoured service runs. Exactly one service
+  # per Compose profile attaches the build definition below (via
+  # `build: *api-build`) and produces this tag; the rest reference it and reuse
+  # what that single build produced.
   image: devopsbin:${VERSION:-dev}
-  build:
-    context: .
-    dockerfile: Dockerfile
-    args:
-      VERSION: ${VERSION:-dev}
-      COMMIT: ${COMMIT:-none}
-      BUILD_TIME: ${BUILD_TIME:-unknown}
-    # Persisted BuildKit layer cache so repeat builds (local and CI) reuse
-    # work. Requires a docker-container builder, which is the default driver
-    # on dev hosts and provisioned in CI.
-    cache_from:
-      - type=local,src=.cache/buildx
-    cache_to:
-      - type=local,dest=.cache/buildx,mode=max
   command:
     - run
+
+# Build definition for the binary image. Attached to a SINGLE service per
+# profile. Compose's bake creates one build target per service that declares
+# `build:`, and parallel targets exporting mode=max to the same `type=local`
+# cache dir race on the cache `ingest`/`blobs` files and corrupt .cache/buildx
+# (the "rename ... no such file or directory" / missing index.json errors).
+# Keeping one builder per profile means a single cache writer, which is safe and
+# still warms the persisted layer cache.
+x-api-build: &api-build
+  context: .
+  dockerfile: Dockerfile
+  args:
+    VERSION: ${VERSION:-dev}
+    COMMIT: ${COMMIT:-none}
+    BUILD_TIME: ${BUILD_TIME:-unknown}
+  # Persisted BuildKit layer cache so repeat builds (local and CI) reuse work.
+  # Requires a docker-container builder, which is the default driver on dev
+  # hosts and provisioned in CI.
+  cache_from:
+    - type=local,src=.cache/buildx
+  cache_to:
+    - type=local,dest=.cache/buildx,mode=max
 
 # A Redis Cluster node: cluster mode enabled, advertising its in-network
 # container address (reachable by the api on the same network). The cluster is
@@ -153,6 +158,8 @@ services:
 
   api:
     <<: *api-base
+    # Sole builder for the dev profile; the migrate one-shot reuses this image.
+    build: *api-build
     profiles:
       - dev
     environment:
@@ -271,6 +278,8 @@ services:
       - cluster
   api-cluster:
     <<: *api-base
+    # Sole builder for the cluster profile.
+    build: *api-build
     profiles:
       - cluster
     environment:
@@ -336,6 +345,8 @@ services:
       - sentinel
   api-sentinel:
     <<: *api-base
+    # Sole builder for the sentinel profile.
+    build: *api-build
     profiles:
       - sentinel
     environment:
@@ -378,6 +389,8 @@ services:
 
   api-tls-direct:
     <<: *api-base
+    # Sole builder for the tls profile; api-tls-proxied reuses this image.
+    build: *api-build
     profiles:
       - tls
     environment:
@@ -475,6 +488,8 @@ services:
 
   api-mtls:
     <<: *api-base
+    # Sole builder for the mtls profile.
+    build: *api-build
     profiles:
       - mtls
     environment:
