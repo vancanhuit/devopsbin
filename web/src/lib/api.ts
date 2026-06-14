@@ -18,7 +18,14 @@ import {
   type ApiResponse,
   type Middleware,
 } from './generated'
-import type { LoginRequest, RegisterRequest, VersionResponse } from './generated'
+import type {
+  LoginRequest,
+  PasswordChangeRequest,
+  PasswordResetRequest,
+  PasswordResetRequestRequest,
+  RegisterRequest,
+  VersionResponse,
+} from './generated'
 
 export type {
   DependencyCheck,
@@ -192,6 +199,18 @@ const rawCalls = {
     auth.postAuthLoginRaw({ loginRequest: jsonBody(opts) as unknown as LoginRequest }),
   '/auth/logout': () => auth.postAuthLogoutRaw({}),
   '/auth/me': () => auth.getAuthMeRaw(),
+  '/auth/password/change': (_args: CallArgs, opts: CallOptions) =>
+    auth.postAuthPasswordChangeRaw({
+      passwordChangeRequest: jsonBody(opts) as unknown as PasswordChangeRequest,
+    }),
+  '/auth/password/reset-request': (_args: CallArgs, opts: CallOptions) =>
+    auth.postAuthPasswordResetRequestRaw({
+      passwordResetRequestRequest: jsonBody(opts) as unknown as PasswordResetRequestRequest,
+    }),
+  '/auth/password/reset': (_args: CallArgs, opts: CallOptions) =>
+    auth.postAuthPasswordResetRaw({
+      passwordResetRequest: jsonBody(opts) as unknown as PasswordResetRequest,
+    }),
 } satisfies Record<string, (args: CallArgs, opts: CallOptions) => Promise<ApiResponse<unknown>>>
 
 // EndpointPath is the set of documented API paths the console can call.
@@ -404,7 +423,8 @@ export const endpoints: readonly Endpoint[] = [
     title: 'Login',
     description: 'Verifies credentials and opens an authenticated session (sets cookies).',
     tag: 'Auth',
-    expectedStatuses: [200, 400, 401],
+    expectedStatuses: [200, 400, 401, 423],
+    resultHeaders: ['retry-after'],
     bodyFields: [
       { name: 'username', label: 'Username', type: 'text', defaultValue: 'alice' },
       { name: 'password', label: 'Password', type: 'password', defaultValue: 'alicepass' },
@@ -427,6 +447,53 @@ export const endpoints: readonly Endpoint[] = [
     tag: 'Auth',
     expectedStatuses: [200, 401],
     requiresAuth: true,
+  },
+  {
+    method: 'POST',
+    path: '/auth/password/change',
+    title: 'Change password',
+    description:
+      'Changes the current user’s password, rotates the session, and revokes other sessions.',
+    tag: 'Auth',
+    expectedStatuses: [200, 400, 401, 403],
+    requiresAuth: true,
+    bodyFields: [
+      { name: 'currentPassword', label: 'Current password', type: 'password' },
+      {
+        name: 'newPassword',
+        label: 'New password',
+        type: 'password',
+        placeholder: '8–128 characters',
+      },
+    ],
+  },
+  {
+    method: 'POST',
+    path: '/auth/password/reset-request',
+    title: 'Request password reset',
+    description:
+      'Issues a single-use reset token for a username. Always 200; the token is returned only when the user exists (demo only).',
+    tag: 'Auth',
+    expectedStatuses: [200, 400],
+    bodyFields: [{ name: 'username', label: 'Username', type: 'text', defaultValue: 'alice' }],
+  },
+  {
+    method: 'POST',
+    path: '/auth/password/reset',
+    title: 'Reset password',
+    description:
+      'Consumes a reset token and sets a new password, revoking all of the user’s sessions.',
+    tag: 'Auth',
+    expectedStatuses: [200, 400, 410],
+    bodyFields: [
+      { name: 'token', label: 'Reset token', type: 'text' },
+      {
+        name: 'newPassword',
+        label: 'New password',
+        type: 'password',
+        placeholder: '8–128 characters',
+      },
+    ],
   },
 ]
 

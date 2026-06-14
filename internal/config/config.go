@@ -131,6 +131,18 @@ type AuthConfig struct {
 	// CSRFCookieName is the name of the readable (non-HttpOnly) CSRF cookie used
 	// for the double-submit defense.
 	CSRFCookieName string `env:"CSRF_COOKIE_NAME" envDefault:"devopsbin_csrf" json:"csrf_cookie_name"`
+	// ResetTokenTTL is how long a password-reset token remains valid before it
+	// expires. Tokens are single-use; this caps the window for an unused one.
+	ResetTokenTTL time.Duration `env:"RESET_TTL" envDefault:"15m" json:"reset_token_ttl"`
+	// LoginWindow is the fixed window over which failed logins are counted for
+	// brute-force lockout.
+	LoginWindow time.Duration `env:"LOGIN_WINDOW" envDefault:"15m" json:"login_window"`
+	// LoginMaxAttempts is the number of failed logins within LoginWindow that
+	// triggers a lockout for the offending username and client IP.
+	LoginMaxAttempts int `env:"LOGIN_MAX_ATTEMPTS" envDefault:"5" json:"login_max_attempts"`
+	// LockTTL is how long a brute-force lockout lasts before logins are allowed
+	// again.
+	LockTTL time.Duration `env:"LOCK_TTL" envDefault:"15m" json:"lock_ttl"`
 }
 
 type RedisConfig struct {
@@ -321,6 +333,18 @@ func (a AuthConfig) Validate() error {
 	}
 	if a.SessionCookieName == a.CSRFCookieName {
 		return fmt.Errorf("config: session_cookie_name and csrf_cookie_name must differ")
+	}
+	if a.ResetTokenTTL <= 0 {
+		return fmt.Errorf("config: reset_token_ttl must be positive")
+	}
+	if a.LoginWindow <= 0 {
+		return fmt.Errorf("config: login_window must be positive")
+	}
+	if a.LoginMaxAttempts < 1 {
+		return fmt.Errorf("config: login_max_attempts must be at least 1, got %d", a.LoginMaxAttempts)
+	}
+	if a.LockTTL <= 0 {
+		return fmt.Errorf("config: lock_ttl must be positive")
 	}
 	return nil
 }

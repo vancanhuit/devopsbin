@@ -252,3 +252,85 @@ describe('JSON body fields', () => {
     expect(result.body).toEqual({ id: '1', username: 'bob', role: 'user' })
   })
 })
+
+describe('password endpoints', () => {
+  it('attaches the CSRF header when changing the password', async () => {
+    stubCookie('devopsbin_csrf=tok-pw')
+    const fetchMock = stubFetch(
+      async () =>
+        new Response(JSON.stringify({ id: '1', username: 'alice', role: 'user' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+    )
+
+    const result = await call(
+      '/auth/password/change',
+      {},
+      {
+        method: 'POST',
+        contentType: 'application/json',
+        body: JSON.stringify({ currentPassword: 'alicepass', newPassword: 'alicepass2' }),
+      }
+    )
+
+    expect(fetchMock).toHaveBeenCalledOnce()
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(String(url)).toContain('/api/v1/auth/password/change')
+    expect(headersOf(init)['X-CSRF-Token']).toBe('tok-pw')
+    expect(JSON.parse(String(init.body))).toEqual({
+      currentPassword: 'alicepass',
+      newPassword: 'alicepass2',
+    })
+    expect(result.status).toBe(200)
+  })
+
+  it('surfaces the reset token from /auth/password/reset-request', async () => {
+    const fetchMock = stubFetch(
+      async () =>
+        new Response(JSON.stringify({ message: 'ok', token: 'reset-tok' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+    )
+
+    const result = await call(
+      '/auth/password/reset-request',
+      {},
+      {
+        method: 'POST',
+        contentType: 'application/json',
+        body: JSON.stringify({ username: 'alice' }),
+      }
+    )
+
+    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/v1/auth/password/reset-request')
+    expect(result.status).toBe(200)
+    expect(result.body).toEqual({ message: 'ok', token: 'reset-tok' })
+  })
+
+  it('reports a 410 for an invalid reset token', async () => {
+    stubFetch(
+      async () =>
+        new Response(JSON.stringify({ error: 'reset token is invalid or expired' }), {
+          status: 410,
+          headers: { 'Content-Type': 'application/json' },
+        })
+    )
+
+    const result = await call(
+      '/auth/password/reset',
+      {},
+      {
+        method: 'POST',
+        contentType: 'application/json',
+        body: JSON.stringify({ token: 'nope', newPassword: 'whatever12' }),
+      }
+    )
+
+    expect(result.ok).toBe(false)
+    expect(result.status).toBe(410)
+    expect(result.body).toEqual({ error: 'reset token is invalid or expired' })
+  })
+})

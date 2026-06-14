@@ -48,6 +48,10 @@ var envKeys = []string{
 	"AUTH_SESSION_ABSOLUTE_TTL",
 	"AUTH_SESSION_COOKIE_NAME",
 	"AUTH_CSRF_COOKIE_NAME",
+	"AUTH_RESET_TTL",
+	"AUTH_LOGIN_WINDOW",
+	"AUTH_LOGIN_MAX_ATTEMPTS",
+	"AUTH_LOCK_TTL",
 }
 
 func clearEnv(t *testing.T) {
@@ -72,6 +76,10 @@ func validAuth() config.AuthConfig {
 		SessionAbsoluteTTL: 12 * time.Hour,
 		SessionCookieName:  "devopsbin_session",
 		CSRFCookieName:     "devopsbin_csrf",
+		ResetTokenTTL:      15 * time.Minute,
+		LoginWindow:        15 * time.Minute,
+		LoginMaxAttempts:   5,
+		LockTTL:            15 * time.Minute,
 	}
 }
 
@@ -174,6 +182,10 @@ func TestLoad_EnvOverrides(t *testing.T) {
 			SessionAbsoluteTTL: 12 * time.Hour,
 			SessionCookieName:  "devopsbin_session",
 			CSRFCookieName:     "devopsbin_csrf",
+			ResetTokenTTL:      15 * time.Minute,
+			LoginWindow:        15 * time.Minute,
+			LoginMaxAttempts:   5,
+			LockTTL:            15 * time.Minute,
 		},
 	}
 	if !reflect.DeepEqual(cfg, want) {
@@ -217,6 +229,10 @@ func TestValidate(t *testing.T) {
 		{"empty session cookie name", func(c *config.Config) { c.Auth.SessionCookieName = "" }, true},
 		{"empty csrf cookie name", func(c *config.Config) { c.Auth.CSRFCookieName = "" }, true},
 		{"identical cookie names", func(c *config.Config) { c.Auth.CSRFCookieName = c.Auth.SessionCookieName }, true},
+		{"zero reset token ttl", func(c *config.Config) { c.Auth.ResetTokenTTL = 0 }, true},
+		{"zero login window", func(c *config.Config) { c.Auth.LoginWindow = 0 }, true},
+		{"zero login max attempts", func(c *config.Config) { c.Auth.LoginMaxAttempts = 0 }, true},
+		{"zero lock ttl", func(c *config.Config) { c.Auth.LockTTL = 0 }, true},
 		{"empty addr", func(c *config.Config) { c.Http.Addr = "" }, true},
 		{"zero read timeout", func(c *config.Config) { c.Http.ReadTimeout = 0 }, true},
 		{"zero write timeout", func(c *config.Config) { c.Http.WriteTimeout = 0 }, true},

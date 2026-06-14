@@ -9,6 +9,7 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -30,20 +31,32 @@ var errSessMiss = errors.New("miss")
 
 func sessMiss(err error) bool { return errors.Is(err, errSessMiss) }
 
-// fakeSessionStore is an in-memory auth.SessionStore for handler tests.
+// fakeSessionStore is an in-memory store used by the auth handler tests. It
+// implements every store interface the auth package needs (sessions, the
+// per-user session index, reset tokens, and lockout counters) so a single
+// instance can back the session manager, recovery, and lockout.
 type fakeSessionStore struct {
-	mu   sync.Mutex
-	data map[string]string
+	mu      sync.Mutex
+	data    map[string]string
+	sets    map[string]map[string]struct{}
+	ttls    map[string]time.Duration
+	counter map[string]int64
 }
 
 func newFakeSessionStore() *fakeSessionStore {
-	return &fakeSessionStore{data: map[string]string{}}
+	return &fakeSessionStore{
+		data:    map[string]string{},
+		sets:    map[string]map[string]struct{}{},
+		ttls:    map[string]time.Duration{},
+		counter: map[string]int64{},
+	}
 }
 
-func (f *fakeSessionStore) Set(_ context.Context, key, value string, _ time.Duration) error {
+func (f *fakeSessionStore) Set(_ context.Context, key, value string, ttl time.Duration) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.data[key] = value
+	f.ttls[key] = ttl
 	return nil
 }
 
@@ -61,23 +74,88 @@ func (f *fakeSessionStore) Del(_ context.Context, key string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	delete(f.data, key)
+	delete(f.sets, key)
+	delete(f.ttls, key)
+	delete(f.counter, key)
 	return nil
 }
 
+func (f *fakeSessionStore) GetDel(_ context.Context, key string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	v, ok := f.data[key]
+	if !ok {
+		return "", errSessMiss
+	}
+	delete(f.data, key)
+	delete(f.ttls, key)
+	return v, nil
+}
+
+func (f *fakeSessionStore) Incr(_ context.Context, key string, ttl time.Duration) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.counter[key]++
+	n := f.counter[key]
+	if n == 1 {
+		f.ttls[key] = ttl
+	}
+	return n, nil
+}
+
+func (f *fakeSessionStore) TTL(_ context.Context, key string) (time.Duration, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.ttls[key], nil
+}
+
+func (f *fakeSessionStore) SAdd(_ context.Context, key, member string, ttl time.Duration) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.sets[key] == nil {
+		f.sets[key] = map[string]struct{}{}
+	}
+	f.sets[key][member] = struct{}{}
+	f.ttls[key] = ttl
+	return nil
+}
+
+func (f *fakeSessionStore) SMembers(_ context.Context, key string) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	members := make([]string, 0, len(f.sets[key]))
+	for m := range f.sets[key] {
+		members = append(members, m)
+	}
+	return members, nil
+}
+
+// count reports the number of stored sessions (keys under the session prefix),
+// ignoring index sets, reset tokens, and lockout counters.
 func (f *fakeSessionStore) count() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return len(f.data)
+	n := 0
+	for k := range f.data {
+		if strings.HasPrefix(k, "session:v1:") {
+			n++
+		}
+	}
+	return n
 }
 
 // fakeUsers is an in-memory userStore for handler tests.
 type fakeUsers struct {
 	mu     sync.Mutex
 	byName map[string]store.UserWithHash
+	byID   map[string]string // user id -> username, for ID-keyed lookups
 }
 
 func newFakeUsers() *fakeUsers {
-	return &fakeUsers{byName: map[string]store.UserWithHash{}}
+	return &fakeUsers{
+		byName: map[string]store.UserWithHash{},
+		byID:   map[string]string{},
+	}
 }
 
 func (f *fakeUsers) RegisterUser(_ context.Context, p store.NewUser) (store.User, error) {
@@ -91,6 +169,7 @@ func (f *fakeUsers) RegisterUser(_ context.Context, p store.NewUser) (store.User
 		PasswordHash: p.PasswordHash,
 	}
 	f.byName[p.Username] = u
+	f.byID[u.ID] = p.Username
 	return u.User, nil
 }
 
@@ -102,6 +181,29 @@ func (f *fakeUsers) UserByUsername(_ context.Context, username string) (store.Us
 		return store.UserWithHash{}, store.ErrUserNotFound
 	}
 	return u, nil
+}
+
+func (f *fakeUsers) UserByID(_ context.Context, id string) (store.UserWithHash, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	name, ok := f.byID[id]
+	if !ok {
+		return store.UserWithHash{}, store.ErrUserNotFound
+	}
+	return f.byName[name], nil
+}
+
+func (f *fakeUsers) UpdatePassword(_ context.Context, id, passwordHash string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	name, ok := f.byID[id]
+	if !ok {
+		return store.ErrUserNotFound
+	}
+	u := f.byName[name]
+	u.PasswordHash = passwordHash
+	f.byName[name] = u
+	return nil
 }
 
 // authTestServer bundles the test HTTP server with its in-memory backends.
@@ -118,6 +220,8 @@ func newAuthTestServer(t *testing.T) *authTestServer {
 	users := newFakeUsers()
 	sessions := newFakeSessionStore()
 	manager := auth.NewManager(sessions, sessMiss, 30*time.Minute, 12*time.Hour)
+	recovery := auth.NewRecovery(sessions, sessMiss, 15*time.Minute)
+	lockout := auth.NewLockout(sessions, sessMiss, 5, 15*time.Minute, 15*time.Minute)
 
 	handler := httpapi.NewServer(
 		httpapi.WithAuth(users, manager, httpapi.AuthSettings{
@@ -126,6 +230,8 @@ func newAuthTestServer(t *testing.T) *authTestServer {
 			CSRFCookieName:     csrfCookieName,
 			SessionAbsoluteTTL: 12 * time.Hour,
 		}),
+		httpapi.WithPasswordRecovery(recovery),
+		httpapi.WithLoginLockout(lockout),
 	).Handler()
 
 	srv := httptest.NewServer(handler)
@@ -448,5 +554,167 @@ func TestAuth_Login_RotatesSession(t *testing.T) {
 	}
 	if a.sessions.count() != 1 {
 		t.Fatalf("expected exactly 1 active session after rotation, got %d", a.sessions.count())
+	}
+}
+
+// resetResponse is the body returned by /auth/password/reset-request.
+type resetResponse struct {
+	Message string `json:"message"`
+	Token   string `json:"token"`
+}
+
+func TestAuth_PasswordChange_Success(t *testing.T) {
+	a := newAuthTestServer(t)
+	a.doClose(t, http.MethodPost, "/api/v1/auth/register", credentials{Username: "alice", Password: "alicepass"}, nil)
+	firstToken := a.csrfToken(t)
+
+	resp := a.do(t, http.MethodPost, "/api/v1/auth/password/change",
+		map[string]string{"currentPassword": "alicepass", "newPassword": "alicepass2"},
+		map[string]string{csrfHeaderName: firstToken})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	if !hasCookie(resp, sessionCookieName) || !hasCookie(resp, csrfCookieName) {
+		t.Fatal("expected the session to be rotated with fresh cookies")
+	}
+	_ = resp.Body.Close()
+
+	// The session was rotated, so the CSRF token changed.
+	if a.csrfToken(t) == firstToken {
+		t.Fatal("expected password change to rotate the csrf token")
+	}
+	if a.sessions.count() != 1 {
+		t.Fatalf("expected exactly 1 active session after change, got %d", a.sessions.count())
+	}
+
+	// The old password no longer works; the new one does.
+	a.doClose(t, http.MethodPost, "/api/v1/auth/logout", nil, map[string]string{csrfHeaderName: a.csrfToken(t)})
+	bad := a.do(t, http.MethodPost, "/api/v1/auth/login", credentials{Username: "alice", Password: "alicepass"}, nil)
+	if bad.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("login with old password status = %d, want 401", bad.StatusCode)
+	}
+	_ = bad.Body.Close()
+	good := a.do(t, http.MethodPost, "/api/v1/auth/login", credentials{Username: "alice", Password: "alicepass2"}, nil)
+	if good.StatusCode != http.StatusOK {
+		t.Fatalf("login with new password status = %d, want 200", good.StatusCode)
+	}
+	_ = good.Body.Close()
+}
+
+func TestAuth_PasswordChange_WrongCurrent(t *testing.T) {
+	a := newAuthTestServer(t)
+	a.doClose(t, http.MethodPost, "/api/v1/auth/register", credentials{Username: "alice", Password: "alicepass"}, nil)
+
+	resp := a.do(t, http.MethodPost, "/api/v1/auth/password/change",
+		map[string]string{"currentPassword": "wrongpass", "newPassword": "alicepass2"},
+		map[string]string{csrfHeaderName: a.csrfToken(t)})
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", resp.StatusCode)
+	}
+}
+
+func TestAuth_PasswordChange_RequiresSession(t *testing.T) {
+	a := newAuthTestServer(t)
+	resp := a.do(t, http.MethodPost, "/api/v1/auth/password/change",
+		map[string]string{"currentPassword": "alicepass", "newPassword": "alicepass2"}, nil)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", resp.StatusCode)
+	}
+}
+
+func TestAuth_PasswordReset_Roundtrip(t *testing.T) {
+	a := newAuthTestServer(t)
+	a.doClose(t, http.MethodPost, "/api/v1/auth/register", credentials{Username: "alice", Password: "alicepass"}, nil)
+	// Log out so the reset flow stands on its own (no session needed).
+	a.doClose(t, http.MethodPost, "/api/v1/auth/logout", nil, map[string]string{csrfHeaderName: a.csrfToken(t)})
+
+	req := a.do(t, http.MethodPost, "/api/v1/auth/password/reset-request",
+		map[string]string{"username": "alice"}, nil)
+	if req.StatusCode != http.StatusOK {
+		t.Fatalf("reset-request status = %d, want 200", req.StatusCode)
+	}
+	var rr resetResponse
+	if err := json.NewDecoder(req.Body).Decode(&rr); err != nil {
+		t.Fatalf("decode reset response: %v", err)
+	}
+	_ = req.Body.Close()
+	if rr.Token == "" {
+		t.Fatal("expected a reset token for an existing user")
+	}
+
+	reset := a.do(t, http.MethodPost, "/api/v1/auth/password/reset",
+		map[string]string{"token": rr.Token, "newPassword": "alicepass3"}, nil)
+	if reset.StatusCode != http.StatusOK {
+		t.Fatalf("reset status = %d, want 200", reset.StatusCode)
+	}
+	_ = reset.Body.Close()
+
+	// The token is single-use: a second reset must report 410.
+	again := a.do(t, http.MethodPost, "/api/v1/auth/password/reset",
+		map[string]string{"token": rr.Token, "newPassword": "alicepass4"}, nil)
+	if again.StatusCode != http.StatusGone {
+		t.Fatalf("second reset status = %d, want 410", again.StatusCode)
+	}
+	_ = again.Body.Close()
+
+	// The new password works.
+	login := a.do(t, http.MethodPost, "/api/v1/auth/login", credentials{Username: "alice", Password: "alicepass3"}, nil)
+	if login.StatusCode != http.StatusOK {
+		t.Fatalf("login with reset password status = %d, want 200", login.StatusCode)
+	}
+	_ = login.Body.Close()
+}
+
+func TestAuth_PasswordResetRequest_UnknownUserNoToken(t *testing.T) {
+	a := newAuthTestServer(t)
+	resp := a.do(t, http.MethodPost, "/api/v1/auth/password/reset-request",
+		map[string]string{"username": "ghost"}, nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	var rr resetResponse
+	if err := json.NewDecoder(resp.Body).Decode(&rr); err != nil {
+		t.Fatalf("decode reset response: %v", err)
+	}
+	_ = resp.Body.Close()
+	if rr.Token != "" {
+		t.Fatal("expected no token for an unknown user")
+	}
+}
+
+func TestAuth_PasswordReset_InvalidToken(t *testing.T) {
+	a := newAuthTestServer(t)
+	resp := a.do(t, http.MethodPost, "/api/v1/auth/password/reset",
+		map[string]string{"token": "nope", "newPassword": "whatever12"}, nil)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusGone {
+		t.Fatalf("status = %d, want 410", resp.StatusCode)
+	}
+}
+
+func TestAuth_Login_LocksOutAfterRepeatedFailures(t *testing.T) {
+	a := newAuthTestServer(t)
+	a.doClose(t, http.MethodPost, "/api/v1/auth/register", credentials{Username: "alice", Password: "alicepass"}, nil)
+	a.doClose(t, http.MethodPost, "/api/v1/auth/logout", nil, map[string]string{csrfHeaderName: a.csrfToken(t)})
+
+	// Five failed attempts (the configured threshold) trip the lock.
+	for i := 0; i < 5; i++ {
+		resp := a.do(t, http.MethodPost, "/api/v1/auth/login", credentials{Username: "alice", Password: "wrong"}, nil)
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("attempt %d status = %d, want 401", i+1, resp.StatusCode)
+		}
+		_ = resp.Body.Close()
+	}
+
+	// Now even the correct password is locked out with a Retry-After hint.
+	locked := a.do(t, http.MethodPost, "/api/v1/auth/login", credentials{Username: "alice", Password: "alicepass"}, nil)
+	defer func() { _ = locked.Body.Close() }()
+	if locked.StatusCode != http.StatusLocked {
+		t.Fatalf("status = %d, want 423", locked.StatusCode)
+	}
+	if locked.Header.Get("Retry-After") == "" {
+		t.Fatal("expected a Retry-After header on a 423 response")
 	}
 }

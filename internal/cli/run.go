@@ -89,6 +89,14 @@ func newRunCmd() *cli.Command {
 				cfg.Auth.SessionIdleTTL,
 				cfg.Auth.SessionAbsoluteTTL,
 			)
+			recovery := auth.NewRecovery(rdb, cache.IsMiss, cfg.Auth.ResetTokenTTL)
+			lockout := auth.NewLockout(
+				rdb,
+				cache.IsMiss,
+				cfg.Auth.LoginMaxAttempts,
+				cfg.Auth.LoginWindow,
+				cfg.Auth.LockTTL,
+			)
 
 			api := httpapi.NewServer(
 				httpapi.WithLogger(logger),
@@ -113,6 +121,8 @@ func newRunCmd() *cli.Command {
 					CSRFCookieName:     cfg.Auth.CSRFCookieName,
 					SessionAbsoluteTTL: cfg.Auth.SessionAbsoluteTTL,
 				}),
+				httpapi.WithPasswordRecovery(recovery),
+				httpapi.WithLoginLockout(lockout),
 			)
 
 			srv := &http.Server{

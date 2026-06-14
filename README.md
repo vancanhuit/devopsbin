@@ -68,6 +68,9 @@ All endpoints live under the `/api/v1` base path. The source of truth is
 | POST   | `/auth/login`         | Auth    | Verify credentials and open a session (sets cookies).   |
 | POST   | `/auth/logout`        | Auth    | Revoke the current session and clear cookies.           |
 | GET    | `/auth/me`            | Auth    | Return the user bound to the current session.           |
+| POST   | `/auth/password/change` | Auth  | Change the current user's password (rotates the session). |
+| POST   | `/auth/password/reset-request` | Auth | Issue a single-use reset token (returned in the body; no email). |
+| POST   | `/auth/password/reset` | Auth   | Consume a reset token and set a new password.           |
 
 \* `/echo` accepts `GET`, `POST`, `PUT`, `PATCH`, and `DELETE`; the body
 methods reflect the request body back.
@@ -155,6 +158,10 @@ TLS modes derived from the above:
 | `AUTH_SESSION_ABSOLUTE_TTL`| `12h`               | Hard cap on session lifetime regardless of activity (≥ idle TTL).      |
 | `AUTH_SESSION_COOKIE_NAME` | `devopsbin_session` | Name of the opaque `HttpOnly` session cookie.                          |
 | `AUTH_CSRF_COOKIE_NAME`    | `devopsbin_csrf`    | Name of the readable CSRF cookie (must differ from the session name).  |
+| `AUTH_RESET_TTL`           | `15m`               | Lifetime of a single-use password-reset token.                         |
+| `AUTH_LOGIN_WINDOW`        | `15m`               | Rolling window over which failed logins are counted.                   |
+| `AUTH_LOGIN_MAX_ATTEMPTS`  | `5`                 | Failed logins (per user and per IP) before lockout (≥ 1).             |
+| `AUTH_LOCK_TTL`            | `15m`               | How long a login lockout lasts; `423` includes a `Retry-After` header. |
 
 ## CLI
 

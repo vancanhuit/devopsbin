@@ -12,3 +12,9 @@ WHERE username = $1;
 SELECT id, username, password_hash, role, created_at, updated_at
 FROM users
 WHERE id = $1;
+
+-- name: UpdateUserPassword :one
+UPDATE users
+SET password_hash = $2, updated_at = now()
+WHERE id = $1
+RETURNING id;

@@ -50,7 +50,7 @@ func (s *Server) PostAuthRegister(ctx context.Context, request PostAuthRegisterR
 		return nil, err
 	}
 
-	resp, err := s.startSession(ctx, user, http.StatusCreated)
+	resp, _, err := s.startSession(ctx, user, http.StatusCreated)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +58,8 @@ func (s *Server) PostAuthRegister(ctx context.Context, request PostAuthRegisterR
 }
 
 // PostAuthLogin verifies credentials and opens an authenticated session,
-// rotating any existing session and setting fresh cookies.
+// rotating any existing session and setting fresh cookies. Repeated failures
+// for a username or client IP trigger a temporary lockout (423).
 func (s *Server) PostAuthLogin(ctx context.Context, request PostAuthLoginRequestObject) (PostAuthLoginResponseObject, error) {
 	if request.Body == nil {
 		return PostAuthLogin400JSONResponse{Error: "request body is required"}, nil
@@ -69,6 +70,17 @@ func (s *Server) PostAuthLogin(ctx context.Context, request PostAuthLoginRequest
 		return PostAuthLogin400JSONResponse{Error: "username and password are required"}, nil
 	}
 
+	ip := originIP(requestFrom(ctx))
+	if s.lockout != nil {
+		if locked, retryAfter := s.lockout.Locked(ctx, username, ip); locked {
+			secs := int32(auth.RetryAfterSeconds(retryAfter))
+			return PostAuthLogin423JSONResponse{
+				Body:    ErrorResponse{Error: "too many failed login attempts; try again later"},
+				Headers: PostAuthLogin423ResponseHeaders{RetryAfter: &secs},
+			}, nil
+		}
+	}
+
 	user, err := s.users.UserByUsername(ctx, username)
 	if err != nil && !errors.Is(err, store.ErrUserNotFound) {
 		return nil, err
@@ -76,10 +88,17 @@ func (s *Server) PostAuthLogin(ctx context.Context, request PostAuthLoginRequest
 	// Run the bcrypt comparison even when the user is missing so the response
 	// time does not reveal whether the username exists.
 	if errors.Is(err, store.ErrUserNotFound) || !auth.CheckPassword(user.PasswordHash, password) {
+		if s.lockout != nil {
+			s.lockout.RecordFailure(ctx, username, ip)
+		}
 		return PostAuthLogin401JSONResponse{Error: "invalid username or password"}, nil
 	}
 
-	resp, err := s.startSession(ctx, user.User, http.StatusOK)
+	if s.lockout != nil {
+		s.lockout.Reset(ctx, username, ip)
+	}
+
+	resp, _, err := s.startSession(ctx, user.User, http.StatusOK)
 	if err != nil {
 		return nil, err
 	}
@@ -119,8 +138,10 @@ func (s *Server) GetAuthMe(ctx context.Context, _ GetAuthMeRequestObject) (GetAu
 
 // startSession rotates the caller's session (deleting any prior session
 // referenced by the request cookie), mints a new one, and builds the success
-// response carrying the session and CSRF cookies.
-func (s *Server) startSession(ctx context.Context, user store.User, statusCode int) (authSuccessResponse, error) {
+// response carrying the session and CSRF cookies. It returns the new session so
+// callers that need its id (e.g. to revoke the user's other sessions) can use
+// it.
+func (s *Server) startSession(ctx context.Context, user store.User, statusCode int) (authSuccessResponse, auth.Session, error) {
 	r := requestFrom(ctx)
 	s.revokeRequestSession(ctx, r)
 
@@ -130,12 +151,12 @@ func (s *Server) startSession(ctx context.Context, user store.User, statusCode i
 		Role:     user.Role,
 	})
 	if err != nil {
-		return authSuccessResponse{}, err
+		return authSuccessResponse{}, auth.Session{}, err
 	}
 
 	body, err := userResponse(user)
 	if err != nil {
-		return authSuccessResponse{}, err
+		return authSuccessResponse{}, auth.Session{}, err
 	}
 
 	maxAge := int(s.authSettings.SessionAbsoluteTTL.Seconds())
@@ -146,7 +167,7 @@ func (s *Server) startSession(ctx context.Context, user store.User, statusCode i
 			s.csrfCookie(r, sess.CSRFToken, maxAge),
 		},
 		body: body,
-	}, nil
+	}, sess, nil
 }
 
 // revokeRequestSession best-effort deletes the session referenced by the
