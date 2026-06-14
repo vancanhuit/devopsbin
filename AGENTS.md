@@ -13,6 +13,7 @@ mise run web:build
 
 # Backend
 mise run api:generate
+mise run api:sqlc
 mise run api:format
 mise run api:vulncheck
 mise run api:lint
@@ -22,6 +23,9 @@ mise run api:test:integration
 # App (Go server with the embedded SPA)
 mise run app:build
 mise run app:run
+
+# Database
+mise run db:migrate
 
 # Docker
 mise run docker:hadolint

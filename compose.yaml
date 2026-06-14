@@ -158,6 +158,28 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - dev
+
+  # One-shot that applies the database migrations and exits. The api waits for
+  # it to complete successfully so it never serves against an un-migrated
+  # schema. The migration runner takes a Postgres session lock, so running this
+  # from several instances at once is safe.
+  migrate:
+    <<: *api-base
+    profiles:
+      - dev
+    command:
+      - migrate
+      - up
+    environment:
+      POSTGRES_URL: postgres://devopsbin:devopsbin@postgres:5432/devopsbin?sslmode=disable
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - dev
 
