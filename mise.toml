@@ -15,8 +15,22 @@ COMMIT = "{{ get_env(name='COMMIT', default=exec(command='git rev-parse --short 
 BUILD_TIME = "{{ get_env(name='BUILD_TIME', default=exec(command='date -u +%Y-%m-%dT%H:%M:%SZ')) }}"
 
 [tasks."api:generate"]
-description = "Generate Go code from OpenAPI specification using oapi-codegen."
+description = "Generate Go code from the OpenAPI spec (oapi-codegen) and SQL (sqlc)."
+depends = ["api:sqlc"]
 run = 'oapi-codegen -config api/oapi-codegen.yaml api/openapi.yaml'
+
+[tasks."api:sqlc"]
+tools = { sqlc = "1.31.1" }
+description = "Generate type-safe Go data-access code from SQL queries using sqlc."
+run = "sqlc generate"
+
+[tasks."db:migrate"]
+tools = { "aqua:pressly/goose" = "3.27.1" }
+description = "Apply the embedded database migrations to a Postgres database using the goose CLI."
+usage = '''
+arg "<url>" help="Postgres connection URL (e.g. postgres://user:pass@host:5432/db?sslmode=disable)"
+'''
+run = 'goose -dir migrations postgres "{{usage.url}}" up'
 
 [tasks."api:test:unit"]
 description = "Run unit tests for the API."

@@ -130,14 +130,51 @@ TLS modes derived from the above:
 The binary is a small command tree:
 
 ```sh
-devopsbin run          # run the backend HTTP API server
-devopsbin healthcheck  # probe /livez and exit 0 on 200 (used as the Docker HEALTHCHECK)
+devopsbin run            # run the backend HTTP API server
+devopsbin migrate up     # apply all pending database migrations
+devopsbin migrate status # show the state of every migration
+devopsbin migrate version# print the current schema version
+devopsbin healthcheck    # probe /livez and exit 0 on 200 (used as the Docker HEALTHCHECK)
 ```
 
 `healthcheck` supports `--url`, `--timeout`, and, for TLS/mTLS targets,
 `--cacert` (verify the server) plus `--cert`/`--key` (present a client
 certificate). This lets a distroless image health-check itself without curl or
 wget.
+
+`migrate` reads `POSTGRES_URL` and applies the migrations embedded in the
+binary. Migrations run **only** via this explicit command — the server never
+migrates on startup — so a deployment runs `devopsbin migrate up` as a discrete
+step. A Postgres session-level advisory lock serializes concurrent runners, so
+it is safe to invoke from multiple replicas or init containers at once.
+
+## Database schema and demo data
+
+The schema is defined by forward-only [goose](https://github.com/pressly/goose)
+migrations under [`migrations/`](migrations), embedded into the binary and
+applied with `devopsbin migrate up`:
+
+| Table       | Purpose                                                                   |
+| ----------- | ------------------------------------------------------------------------- |
+| `users`     | Account holders (`username`, `password_hash`, `role` of `user`/`admin`).  |
+| `accounts`  | Money accounts owned by a user, with a non-negative `balance_cents`.      |
+| `transfers` | Append-only ledger of money moved between accounts (`amount_cents > 0`).  |
+
+Data access is generated with [sqlc](https://sqlc.dev) into
+`internal/store/sqlc` from the queries in `internal/store/queries`; regenerate
+it with `mise run api:sqlc` (folded into `mise run api:generate`).
+
+The final migration seeds two demo users (passwords are bcrypt hashes baked into
+the seed SQL), each with a starter checking account of 1000.00:
+
+| Username | Password    | Role    |
+| -------- | ----------- | ------- |
+| `alice`  | `alicepass` | `user`  |
+| `admin`  | `adminpass` | `admin` |
+
+These credentials are intentionally public — they exist only to make the demo
+runnable out of the box and must never be used in a real deployment.
+
 
 ## Deployment topologies
 

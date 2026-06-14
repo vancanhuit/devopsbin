@@ -1,0 +1,16 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    # Schema is derived from the same goose migration files the binary applies,
+    # so the generated types never drift from the live schema. sqlc understands
+    # the goose up/down annotations and uses only the up statements.
+    schema: "migrations"
+    queries: "internal/store/queries"
+    gen:
+      go:
+        package: "sqlc"
+        out: "internal/store/sqlc"
+        sql_package: "pgx/v5"
+        emit_json_tags: false
+        emit_interface: false
+        emit_empty_slices: true

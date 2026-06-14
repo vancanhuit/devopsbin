@@ -58,6 +58,7 @@ WORKDIR /app
 
 COPY mise/ mise/
 
+COPY migrations/ migrations/
 COPY api/ api/
 COPY cmd/ cmd/
 COPY internal/ internal/
