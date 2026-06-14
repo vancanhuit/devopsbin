@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { call } from './api'
+import { call, getCsrfToken } from './api'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -10,6 +10,16 @@ function stubFetch(impl: typeof fetch) {
   const fetchMock = vi.fn(impl)
   vi.stubGlobal('fetch', fetchMock)
   return fetchMock
+}
+
+// stubCookie makes document.cookie return the given string so the CSRF
+// middleware can read the (non-HttpOnly) token cookie under the node test env.
+function stubCookie(cookie: string) {
+  vi.stubGlobal('document', { cookie })
+}
+
+function headersOf(init: RequestInit): Record<string, string> {
+  return (init.headers ?? {}) as Record<string, string>
 }
 
 describe('call', () => {
@@ -140,5 +150,105 @@ describe('call', () => {
     expect(fetchMock).toHaveBeenCalledOnce()
     const url = String(fetchMock.mock.calls[0][0])
     expect(url).toContain('/echo?foo=bar&foo=baz')
+  })
+})
+
+describe('getCsrfToken', () => {
+  it('returns an empty string when no document is present', () => {
+    expect(getCsrfToken()).toBe('')
+  })
+
+  it('reads the devopsbin_csrf cookie value', () => {
+    stubCookie('other=1; devopsbin_csrf=tok-123; foo=bar')
+    expect(getCsrfToken()).toBe('tok-123')
+  })
+
+  it('returns an empty string when the CSRF cookie is absent', () => {
+    stubCookie('other=1; foo=bar')
+    expect(getCsrfToken()).toBe('')
+  })
+})
+
+describe('CSRF wiring', () => {
+  it('attaches the X-CSRF-Token header to an unsafe request when the cookie is set', async () => {
+    stubCookie('devopsbin_csrf=tok-abc')
+    const fetchMock = stubFetch(
+      async () =>
+        new Response(JSON.stringify({ id: '1', username: 'alice', role: 'user' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+    )
+
+    await call(
+      '/auth/login',
+      {},
+      {
+        method: 'POST',
+        contentType: 'application/json',
+        body: JSON.stringify({ username: 'alice', password: 'alicepass' }),
+      }
+    )
+
+    expect(fetchMock).toHaveBeenCalledOnce()
+    const init = fetchMock.mock.calls[0][1] as RequestInit
+    expect(headersOf(init)['X-CSRF-Token']).toBe('tok-abc')
+  })
+
+  it('omits the X-CSRF-Token header on a safe (GET) request', async () => {
+    stubCookie('devopsbin_csrf=tok-abc')
+    const fetchMock = stubFetch(
+      async () =>
+        new Response(JSON.stringify({ id: '1', username: 'alice', role: 'user' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+    )
+
+    await call('/auth/me')
+
+    expect(fetchMock).toHaveBeenCalledOnce()
+    const init = fetchMock.mock.calls[0][1] as RequestInit
+    expect(headersOf(init)['X-CSRF-Token']).toBeUndefined()
+  })
+
+  it('sends same-origin credentials on auth requests', async () => {
+    stubCookie('devopsbin_csrf=tok-abc')
+    const fetchMock = stubFetch(async () => new Response(null, { status: 204 }))
+
+    await call('/auth/logout', {}, { method: 'POST' })
+
+    const init = fetchMock.mock.calls[0][1] as RequestInit
+    expect(init.credentials).toBe('same-origin')
+    expect(headersOf(init)['X-CSRF-Token']).toBe('tok-abc')
+  })
+})
+
+describe('JSON body fields', () => {
+  it('serializes the request body as JSON for /auth/register', async () => {
+    const fetchMock = stubFetch(
+      async () =>
+        new Response(JSON.stringify({ id: '1', username: 'bob', role: 'user' }), {
+          status: 201,
+          headers: { 'Content-Type': 'application/json' },
+        })
+    )
+
+    const result = await call(
+      '/auth/register',
+      {},
+      {
+        method: 'POST',
+        contentType: 'application/json',
+        body: JSON.stringify({ username: 'bob', password: 'bobpass12' }),
+      }
+    )
+
+    expect(fetchMock).toHaveBeenCalledOnce()
+    const init = fetchMock.mock.calls[0][1] as RequestInit
+    expect(headersOf(init)['Content-Type']).toBe('application/json')
+    expect(JSON.parse(String(init.body))).toEqual({ username: 'bob', password: 'bobpass12' })
+    expect(result.status).toBe(201)
+    expect(result.body).toEqual({ id: '1', username: 'bob', role: 'user' })
   })
 })

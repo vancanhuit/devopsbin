@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/vancanhuit/devopsbin/internal/config"
@@ -194,6 +195,85 @@ func TestStore_WithTx_Rollback(t *testing.T) {
 
 	if _, err := s.Queries().GetUserByUsername(ctx, username); !errors.Is(err, pgx.ErrNoRows) {
 		t.Fatalf("expected user to be rolled back (pgx.ErrNoRows), got %v", err)
+	}
+}
+
+// TestStore_RegisterUser_CreatesUserAndAccount registers a new user and
+// verifies the user, a starter account, and the canonical id round-trip.
+func TestStore_RegisterUser_CreatesUserAndAccount(t *testing.T) {
+	applyMigrations(t)
+	s := newStore(t)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+
+	username := uniqueUsername(t)
+	user, err := s.RegisterUser(ctx, store.NewUser{
+		Username:     username,
+		PasswordHash: "hash",
+		Role:         "user",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser: %v", err)
+	}
+	if user.Username != username || user.Role != "user" {
+		t.Fatalf("unexpected user: %+v", user)
+	}
+	if user.ID == "" {
+		t.Fatal("expected a non-empty canonical user id")
+	}
+
+	got, err := s.UserByUsername(ctx, username)
+	if err != nil {
+		t.Fatalf("UserByUsername: %v", err)
+	}
+	if got.ID != user.ID || got.PasswordHash != "hash" {
+		t.Fatalf("UserByUsername mismatch: %+v", got)
+	}
+
+	id, err := uuid.Parse(user.ID)
+	if err != nil {
+		t.Fatalf("user id %q is not a valid uuid: %v", user.ID, err)
+	}
+	pgID := pgtype.UUID{Bytes: id, Valid: true}
+	accounts, err := s.Queries().ListAccountsByUser(ctx, pgID)
+	if err != nil {
+		t.Fatalf("ListAccountsByUser: %v", err)
+	}
+	if len(accounts) != 1 {
+		t.Fatalf("got %d starter accounts, want 1", len(accounts))
+	}
+}
+
+// TestStore_RegisterUser_DuplicateUsername maps a unique-constraint violation
+// to ErrUsernameTaken.
+func TestStore_RegisterUser_DuplicateUsername(t *testing.T) {
+	applyMigrations(t)
+	s := newStore(t)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+
+	username := uniqueUsername(t)
+	params := store.NewUser{Username: username, PasswordHash: "hash", Role: "user"}
+	if _, err := s.RegisterUser(ctx, params); err != nil {
+		t.Fatalf("first RegisterUser: %v", err)
+	}
+	if _, err := s.RegisterUser(ctx, params); !errors.Is(err, store.ErrUsernameTaken) {
+		t.Fatalf("err = %v, want ErrUsernameTaken", err)
+	}
+}
+
+// TestStore_UserByUsername_NotFound maps a missing user to ErrUserNotFound.
+func TestStore_UserByUsername_NotFound(t *testing.T) {
+	applyMigrations(t)
+	s := newStore(t)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+
+	if _, err := s.UserByUsername(ctx, uniqueUsername(t)); !errors.Is(err, store.ErrUserNotFound) {
+		t.Fatalf("err = %v, want ErrUserNotFound", err)
 	}
 }
 

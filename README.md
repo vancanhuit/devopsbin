@@ -64,12 +64,33 @@ All endpoints live under the `/api/v1` base path. The source of truth is
 | ALL\*  | `/echo`               | Inspect | Echo method, path, query, headers, origin, scheme, and request body. |
 | GET    | `/status/{code}`      | Status  | Return the caller-specified HTTP status code.           |
 | GET    | `/delay/{seconds}`    | Latency | Respond after a bounded artificial delay.               |
+| POST   | `/auth/register`      | Auth    | Create a user and open a session (sets cookies).        |
+| POST   | `/auth/login`         | Auth    | Verify credentials and open a session (sets cookies).   |
+| POST   | `/auth/logout`        | Auth    | Revoke the current session and clear cookies.           |
+| GET    | `/auth/me`            | Auth    | Return the user bound to the current session.           |
 
 \* `/echo` accepts `GET`, `POST`, `PUT`, `PATCH`, and `DELETE`; the body
 methods reflect the request body back.
 
 The root path serves the SPA console; API docs are available via Swagger UI and
 Redoc.
+
+### Authentication
+
+Auth is **cookie-session based**. `register`/`login` open a server-side session
+stored in Redis and set two cookies: an opaque, `HttpOnly` session cookie
+(`devopsbin_session`) and a readable CSRF cookie (`devopsbin_csrf`). The browser
+sends both automatically; the SPA console wires them through for you.
+
+State-changing requests to authenticated routes use a **session-bound
+double-submit CSRF** check: send the `devopsbin_csrf` value back in the
+`X-CSRF-Token` header. A missing or mismatched token is rejected with `403`.
+`logout` (and any unsafe authenticated method) therefore requires the header.
+
+Sessions are hardened: the id and CSRF token are **rotated on login**
+(anti-fixation), sessions expire on a sliding **idle** timeout and a hard
+**absolute** timeout, and `logout` revokes the session server-side immediately.
+
 
 ## Configuration
 
@@ -124,6 +145,16 @@ TLS modes derived from the above:
 | `REDIS_USERNAME`     | —                | ACL username (optional).                                                |
 | `REDIS_PASSWORD`     | —                | Password (never logged or serialized).                                  |
 | `REDIS_TLS`          | `false`          | Enable an in-transit-encrypted connection.                              |
+
+### Auth (`AUTH_`)
+
+| Variable                   | Default             | Description                                                             |
+| -------------------------- | ------------------- | ---------------------------------------------------------------------- |
+| `AUTH_BCRYPT_COST`         | `12`                | bcrypt cost for password hashing (4–31).                              |
+| `AUTH_SESSION_IDLE_TTL`    | `30m`               | Sliding idle timeout; each request refreshes it.                       |
+| `AUTH_SESSION_ABSOLUTE_TTL`| `12h`               | Hard cap on session lifetime regardless of activity (≥ idle TTL).      |
+| `AUTH_SESSION_COOKIE_NAME` | `devopsbin_session` | Name of the opaque `HttpOnly` session cookie.                          |
+| `AUTH_CSRF_COOKIE_NAME`    | `devopsbin_csrf`    | Name of the readable CSRF cookie (must differ from the session name).  |
 
 ## CLI
 

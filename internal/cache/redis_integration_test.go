@@ -13,6 +13,7 @@ package cache_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -72,5 +73,50 @@ func TestClient_Ping_Unreachable(t *testing.T) {
 
 	if err := c.Ping(ctx); err == nil {
 		t.Fatal("expected ping to fail against an unreachable redis")
+	}
+}
+
+// TestClient_SetGetDel exercises the session-store primitives: a value set with
+// a TTL round-trips, and Del removes it so a subsequent Get reports a miss.
+func TestClient_SetGetDel(t *testing.T) {
+	c := newClient(t)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	key := fmt.Sprintf("test:cache:%d", time.Now().UnixNano())
+	const value = "hello"
+
+	if err := c.Set(ctx, key, value, time.Minute); err != nil {
+		t.Fatalf("Set: %v", err)
+	}
+
+	got, err := c.Get(ctx, key)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got != value {
+		t.Fatalf("Get = %q, want %q", got, value)
+	}
+
+	if err := c.Del(ctx, key); err != nil {
+		t.Fatalf("Del: %v", err)
+	}
+
+	if _, err := c.Get(ctx, key); !cache.IsMiss(err) {
+		t.Fatalf("Get after Del err = %v, want a miss", err)
+	}
+}
+
+// TestClient_Get_Miss reports a miss for an absent key.
+func TestClient_Get_Miss(t *testing.T) {
+	c := newClient(t)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	key := fmt.Sprintf("test:cache:absent:%d", time.Now().UnixNano())
+	if _, err := c.Get(ctx, key); !cache.IsMiss(err) {
+		t.Fatalf("Get err = %v, want a miss", err)
 	}
 }

@@ -52,6 +52,19 @@ x-api-build: &api-build
   cache_to:
     - type=local,dest=.cache/buildx,mode=max
 
+# Shared definition for every profile's one-shot migration runner. Each profile
+# attaches this and only overrides the topology-specific POSTGRES_URL,
+# depends_on, profile, and network. The runner applies the embedded migrations
+# and exits; the profile's api waits for it to complete successfully so it never
+# serves against an un-migrated schema. The runner takes a Postgres session
+# lock, so running it from several instances at once is safe.
+x-migrate-base: &migrate-base
+  <<: *api-base
+  command:
+    - migrate
+    - up
+  restart: "no"
+
 # A Redis Cluster node: cluster mode enabled, advertising its in-network
 # container address (reachable by the api on the same network). The cluster is
 # formed by the redis-cluster-init one-shot once every node is healthy.
@@ -183,15 +196,11 @@ services:
   # schema. The migration runner takes a Postgres session lock, so running this
   # from several instances at once is safe.
   migrate:
-    <<: *api-base
+    <<: *migrate-base
     profiles:
       - dev
-    command:
-      - migrate
-      - up
     environment:
       POSTGRES_URL: postgres://devopsbin:devopsbin@postgres:5432/devopsbin?sslmode=disable
-    restart: "no"
     depends_on:
       postgres:
         condition: service_healthy
@@ -276,6 +285,19 @@ services:
         condition: service_healthy
     networks:
       - cluster
+  # One-shot that applies the database migrations for the cluster profile and
+  # exits; api-cluster waits for it to complete successfully.
+  migrate-cluster:
+    <<: *migrate-base
+    profiles:
+      - cluster
+    environment:
+      POSTGRES_URL: postgres://devopsbin:devopsbin@postgres-cluster:5432/devopsbin?sslmode=disable
+    depends_on:
+      postgres-cluster:
+        condition: service_healthy
+    networks:
+      - cluster
   api-cluster:
     <<: *api-base
     # Sole builder for the cluster profile.
@@ -291,6 +313,8 @@ services:
     depends_on:
       postgres-cluster:
         condition: service_healthy
+      migrate-cluster:
+        condition: service_completed_successfully
       redis-cluster-init:
         condition: service_completed_successfully
     networks:
@@ -343,6 +367,19 @@ services:
       - sentinel
     networks:
       - sentinel
+  # One-shot that applies the database migrations for the sentinel profile and
+  # exits; api-sentinel waits for it to complete successfully.
+  migrate-sentinel:
+    <<: *migrate-base
+    profiles:
+      - sentinel
+    environment:
+      POSTGRES_URL: postgres://devopsbin:devopsbin@postgres-sentinel:5432/devopsbin?sslmode=disable
+    depends_on:
+      postgres-sentinel:
+        condition: service_healthy
+    networks:
+      - sentinel
   api-sentinel:
     <<: *api-base
     # Sole builder for the sentinel profile.
@@ -359,6 +396,8 @@ services:
     depends_on:
       postgres-sentinel:
         condition: service_healthy
+      migrate-sentinel:
+        condition: service_completed_successfully
       redis-sentinel-1:
         condition: service_healthy
       redis-sentinel-2:
@@ -384,6 +423,21 @@ services:
     <<: *redis-base
     profiles:
       - tls
+    networks:
+      - tls
+
+  # One-shot that applies the database migrations for the tls profile and exits;
+  # both api-tls-direct and api-tls-proxied wait for it to complete
+  # successfully.
+  migrate-tls:
+    <<: *migrate-base
+    profiles:
+      - tls
+    environment:
+      POSTGRES_URL: postgres://devopsbin:devopsbin@postgres-tls:5432/devopsbin?sslmode=disable
+    depends_on:
+      postgres-tls:
+        condition: service_healthy
     networks:
       - tls
 
@@ -425,6 +479,8 @@ services:
     depends_on:
       postgres-tls:
         condition: service_healthy
+      migrate-tls:
+        condition: service_completed_successfully
       redis-tls:
         condition: service_healthy
     networks:
@@ -444,6 +500,8 @@ services:
     depends_on:
       postgres-tls:
         condition: service_healthy
+      migrate-tls:
+        condition: service_completed_successfully
       redis-tls:
         condition: service_healthy
     # No host port: reachable only through Caddy.
@@ -483,6 +541,20 @@ services:
     <<: *redis-base
     profiles:
       - mtls
+    networks:
+      - mtls
+
+  # One-shot that applies the database migrations for the mtls profile and
+  # exits; api-mtls waits for it to complete successfully.
+  migrate-mtls:
+    <<: *migrate-base
+    profiles:
+      - mtls
+    environment:
+      POSTGRES_URL: postgres://devopsbin:devopsbin@postgres-mtls:5432/devopsbin?sslmode=disable
+    depends_on:
+      postgres-mtls:
+        condition: service_healthy
     networks:
       - mtls
 
@@ -533,6 +605,8 @@ services:
     depends_on:
       postgres-mtls:
         condition: service_healthy
+      migrate-mtls:
+        condition: service_completed_successfully
       redis-mtls:
         condition: service_healthy
     networks:
