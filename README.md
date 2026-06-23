@@ -71,6 +71,13 @@ All endpoints live under the `/api/v1` base path. The source of truth is
 | POST   | `/auth/password/change` | Auth  | Change the current user's password (rotates the session). |
 | POST   | `/auth/password/reset-request` | Auth | Issue a single-use reset token (returned in the body; no email). |
 | POST   | `/auth/password/reset` | Auth   | Consume a reset token and set a new password.           |
+| GET    | `/admin/users`        | Admin   | List all users (admin only; 403 otherwise).             |
+| GET    | `/admin/accounts`     | Admin   | List all accounts with their owners (admin only).       |
+| GET    | `/admin/transfers`    | Admin   | List the transfers ledger (admin only).                 |
+| POST   | `/admin/users/{id}/unlock` | Admin | Clear a user's login lockout (admin only).            |
+| POST   | `/admin/users/{id}/password-reset` | Admin | Mint a reset token for a user (admin only; returned in the body). |
+| GET    | `/accounts`           | Database | List all accounts (any signed-in user).                |
+| POST   | `/transfer`           | Database | Transfer funds between two accounts in one transaction. |
 
 \* `/echo` accepts `GET`, `POST`, `PUT`, `PATCH`, and `DELETE`; the body
 methods reflect the request body back.
@@ -93,6 +100,32 @@ double-submit CSRF** check: send the `devopsbin_csrf` value back in the
 Sessions are hardened: the id and CSRF token are **rotated on login**
 (anti-fixation), sessions expire on a sliding **idle** timeout and a hard
 **absolute** timeout, and `logout` revokes the session server-side immediately.
+
+Access is **role-based**. Each user has a `role` (`user` or `admin`) carried in
+the session, so authorization needs no extra database lookup. The `/admin/*`
+endpoints require the `admin` role; a valid non-admin session is rejected with
+`403`. The admin surface is read-only listings (users, accounts, transfers) plus
+two operator actions (clear a user's login lockout, mint a reset token). Sign in
+as the seeded `admin` user to exercise it.
+
+### Database transactions
+
+The `Database` endpoints demonstrate a correct, concurrent money transfer. Any
+signed-in user can `GET /accounts` to list every account, then
+`POST /transfer` `{ fromAccountId, toAccountId, amountCents }` to move funds. The
+caller must own the source account (`403` otherwise), the accounts must exist
+(`404`), and the source must have sufficient funds (`409`).
+
+Each transfer runs in a **single transaction**: it locks both accounts
+`FOR UPDATE` in a deterministic id order (avoiding deadlocks), checks ownership
+and balance, debits and credits atomically, and writes a ledger row — so a
+transfer is all-or-nothing. The transaction runs at **serializable** isolation
+by default and **retries automatically** on serialization conflicts, so
+concurrent transfers never lose or double-spend. The optional `?isolation=`
+(`serializable` | `repeatable-read` | `read-committed`) and `?holdMs=` query
+parameters let you vary the isolation level and widen the contention window to
+observe the behaviour. Sign in as the seeded `alice` user, list accounts, and
+transfer between two of them to try it.
 
 
 ## Configuration

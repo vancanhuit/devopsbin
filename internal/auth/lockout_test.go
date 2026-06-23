@@ -75,6 +75,30 @@ func TestLockout_ResetClearsLock(t *testing.T) {
 	}
 }
 
+func TestLockout_UnlockClearsUserLockOnly(t *testing.T) {
+	l := newTestLockout(newFakeStore())
+	ctx := context.Background()
+
+	// Repeated failures lock both the username and the IP.
+	for i := 0; i < testLockMax; i++ {
+		l.RecordFailure(ctx, "alice", "10.0.0.1")
+	}
+
+	if err := l.Unlock(ctx, "alice"); err != nil {
+		t.Fatalf("Unlock: %v", err)
+	}
+
+	// The user-scoped lock is cleared.
+	if locked, _ := l.Locked(ctx, "alice", ""); locked {
+		t.Fatal("expected the user lock to be cleared after unlock")
+	}
+	// The IP-scoped lock is untouched: an admin unlocking an account knows the
+	// user but not the originating IP.
+	if locked, _ := l.Locked(ctx, "", "10.0.0.1"); !locked {
+		t.Fatal("expected the IP lock to survive a user-scoped unlock")
+	}
+}
+
 func TestLockout_LocksByIPAcrossUsernames(t *testing.T) {
 	l := newTestLockout(newFakeStore())
 	ctx := context.Background()

@@ -9,7 +9,9 @@
 import {
   Configuration,
   ResponseError,
+  AdminApi,
   AuthApi,
+  DatabaseApi,
   InspectApi,
   JSONApiResponse,
   LatencyApi,
@@ -24,6 +26,7 @@ import type {
   PasswordResetRequest,
   PasswordResetRequestRequest,
   RegisterRequest,
+  TransferRequest,
   VersionResponse,
 } from './generated'
 
@@ -129,6 +132,8 @@ const inspect = new InspectApi(config)
 const status = new StatusApi(config)
 const latency = new LatencyApi(config)
 const auth = new AuthApi(config)
+const admin = new AdminApi(config)
+const database = new DatabaseApi(config)
 
 // echoRaw issues the /echo request for the selected HTTP method, forwarding an
 // optional request body (for body-carrying methods) and an optional raw query
@@ -211,6 +216,15 @@ const rawCalls = {
     auth.postAuthPasswordResetRaw({
       passwordResetRequest: jsonBody(opts) as unknown as PasswordResetRequest,
     }),
+  '/admin/users': () => admin.getAdminUsersRaw(),
+  '/admin/accounts': () => admin.getAdminAccountsRaw(),
+  '/admin/transfers': () => admin.getAdminTransfersRaw(),
+  '/admin/users/{id}/unlock': (args: CallArgs) => admin.postAdminUserUnlockRaw({ id: args.id }),
+  '/admin/users/{id}/password-reset': (args: CallArgs) =>
+    admin.postAdminUserPasswordResetRaw({ id: args.id }),
+  '/accounts': () => database.getAccountsRaw(),
+  '/transfer': (_args: CallArgs, opts: CallOptions) =>
+    database.postTransferRaw({ transferRequest: jsonBody(opts) as unknown as TransferRequest }),
 } satisfies Record<string, (args: CallArgs, opts: CallOptions) => Promise<ApiResponse<unknown>>>
 
 // EndpointPath is the set of documented API paths the console can call.
@@ -492,6 +506,103 @@ export const endpoints: readonly Endpoint[] = [
         label: 'New password',
         type: 'password',
         placeholder: '8–128 characters',
+      },
+    ],
+  },
+  {
+    method: 'GET',
+    path: '/admin/users',
+    title: 'List users',
+    description:
+      'Lists all users (id, username, role, created time). Requires an admin session; non-admins get 403.',
+    tag: 'Admin',
+    expectedStatuses: [200, 401, 403],
+    requiresAuth: true,
+    requiresRole: 'admin',
+  },
+  {
+    method: 'GET',
+    path: '/admin/accounts',
+    title: 'List accounts',
+    description:
+      'Lists every account across users with its owner. Requires an admin session; non-admins get 403.',
+    tag: 'Admin',
+    expectedStatuses: [200, 401, 403],
+    requiresAuth: true,
+    requiresRole: 'admin',
+  },
+  {
+    method: 'GET',
+    path: '/admin/transfers',
+    title: 'List transfers',
+    description:
+      'Lists the transfers ledger, most recent first. Requires an admin session; non-admins get 403.',
+    tag: 'Admin',
+    expectedStatuses: [200, 401, 403],
+    requiresAuth: true,
+    requiresRole: 'admin',
+  },
+  {
+    method: 'POST',
+    path: '/admin/users/{id}/unlock',
+    title: 'Unlock user',
+    description:
+      'Clears a user’s brute-force login lockout. Requires an admin session and CSRF token; non-admins get 403.',
+    tag: 'Admin',
+    expectedStatuses: [204, 401, 403, 404],
+    requiresAuth: true,
+    requiresRole: 'admin',
+    params: [{ name: 'id', label: 'User id', type: 'text', defaultValue: '' }],
+  },
+  {
+    method: 'POST',
+    path: '/admin/users/{id}/password-reset',
+    title: 'Reset user password',
+    description:
+      'Mints a single-use reset token for a user (returned in the response, demo only). Requires an admin session and CSRF token.',
+    tag: 'Admin',
+    expectedStatuses: [200, 401, 403, 404],
+    requiresAuth: true,
+    requiresRole: 'admin',
+    params: [{ name: 'id', label: 'User id', type: 'text', defaultValue: '' }],
+  },
+  {
+    method: 'GET',
+    path: '/accounts',
+    title: 'List accounts',
+    description:
+      'Lists every account (id, owner, balance) so a transfer source and destination can be chosen. Requires a session; any logged-in user may call it.',
+    tag: 'Database',
+    expectedStatuses: [200, 401],
+    requiresAuth: true,
+  },
+  {
+    method: 'POST',
+    path: '/transfer',
+    title: 'Transfer funds',
+    description:
+      'Moves funds between two accounts in a single transaction. The caller must own the source account. Requires a session and CSRF token; 403 if you do not own the source, 404 if an account is missing, 409 on insufficient funds.',
+    tag: 'Database',
+    expectedStatuses: [200, 400, 401, 403, 404, 409],
+    requiresAuth: true,
+    bodyFields: [
+      {
+        name: 'fromAccountId',
+        label: 'From account id',
+        type: 'text',
+        placeholder: 'a uuid you own',
+      },
+      {
+        name: 'toAccountId',
+        label: 'To account id',
+        type: 'text',
+        placeholder: 'destination uuid',
+      },
+      {
+        name: 'amountCents',
+        label: 'Amount (cents)',
+        type: 'number',
+        placeholder: 'e.g. 2500',
       },
     ],
   },
