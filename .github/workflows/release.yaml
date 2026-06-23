@@ -40,7 +40,7 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
-      - uses: jdx/mise-action@v4.1.0
+      - uses: jdx/mise-action@v4.2.0
         with:
           # Pin the mise CLI to match MISE_VERSION in mise.toml and the
           # Dockerfile so local, CI, and image builds resolve tasks and tools
@@ -120,7 +120,7 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
-      - uses: jdx/mise-action@v4.1.0
+      - uses: jdx/mise-action@v4.2.0
         with:
           version: 2026.6.3
           install: true
