@@ -23,6 +23,24 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for AdminUserRole.
+const (
+	AdminUserRoleAdmin AdminUserRole = "admin"
+	AdminUserRoleUser  AdminUserRole = "user"
+)
+
+// Valid indicates whether the value is a known member of the AdminUserRole enum.
+func (e AdminUserRole) Valid() bool {
+	switch e {
+	case AdminUserRoleAdmin:
+		return true
+	case AdminUserRoleUser:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DependencyCheckStatus.
 const (
 	DependencyCheckStatusError   DependencyCheckStatus = "error"
@@ -133,21 +151,87 @@ func (e StartupzResponseStatus) Valid() bool {
 
 // Defines values for UserResponseRole.
 const (
-	Admin UserResponseRole = "admin"
-	User  UserResponseRole = "user"
+	UserResponseRoleAdmin UserResponseRole = "admin"
+	UserResponseRoleUser  UserResponseRole = "user"
 )
 
 // Valid indicates whether the value is a known member of the UserResponseRole enum.
 func (e UserResponseRole) Valid() bool {
 	switch e {
-	case Admin:
+	case UserResponseRoleAdmin:
 		return true
-	case User:
+	case UserResponseRoleUser:
 		return true
 	default:
 		return false
 	}
 }
+
+// AccountListResponse defines model for AccountListResponse.
+type AccountListResponse struct {
+	// Accounts All accounts across users, ordered by owner then account id.
+	Accounts []AdminAccount `json:"accounts"`
+}
+
+// AdminAccount defines model for AdminAccount.
+type AdminAccount struct {
+	// BalanceCents The account balance in cents.
+	BalanceCents int64 `json:"balanceCents"`
+
+	// CreatedAt When the account was created.
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Id The account's unique identifier.
+	Id openapi_types.UUID `json:"id"`
+
+	// Name The account name.
+	Name string `json:"name"`
+
+	// OwnerUsername The username of the account owner.
+	OwnerUsername string `json:"ownerUsername"`
+}
+
+// AdminTransfer defines model for AdminTransfer.
+type AdminTransfer struct {
+	// AmountCents The transfer amount in cents.
+	AmountCents int64 `json:"amountCents"`
+
+	// CreatedAt When the transfer was recorded.
+	CreatedAt time.Time `json:"createdAt"`
+
+	// FromAccountId The source account id.
+	FromAccountId openapi_types.UUID `json:"fromAccountId"`
+
+	// FromAccountName The source account name.
+	FromAccountName string `json:"fromAccountName"`
+
+	// Id The transfer's unique identifier.
+	Id openapi_types.UUID `json:"id"`
+
+	// ToAccountId The destination account id.
+	ToAccountId openapi_types.UUID `json:"toAccountId"`
+
+	// ToAccountName The destination account name.
+	ToAccountName string `json:"toAccountName"`
+}
+
+// AdminUser defines model for AdminUser.
+type AdminUser struct {
+	// CreatedAt When the user was created.
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Id The user's unique identifier.
+	Id openapi_types.UUID `json:"id"`
+
+	// Role The user's role.
+	Role AdminUserRole `json:"role"`
+
+	// Username The user's username.
+	Username string `json:"username"`
+}
+
+// AdminUserRole The user's role.
+type AdminUserRole string
 
 // DelayResponse defines model for DelayResponse.
 type DelayResponse struct {
@@ -309,9 +393,21 @@ type StatusResponse struct {
 	Description *string `json:"description,omitempty"`
 }
 
+// TransferListResponse defines model for TransferListResponse.
+type TransferListResponse struct {
+	// Transfers The transfers ledger, most recent first.
+	Transfers []AdminTransfer `json:"transfers"`
+}
+
 // UserAgentResponse defines model for UserAgentResponse.
 type UserAgentResponse struct {
 	UserAgent string `json:"user-agent"`
+}
+
+// UserListResponse defines model for UserListResponse.
+type UserListResponse struct {
+	// Users All users, ordered by creation time.
+	Users []AdminUser `json:"users"`
 }
 
 // UserResponse defines model for UserResponse.
@@ -347,11 +443,26 @@ type VersionResponse struct {
 // CsrfTokenHeader defines model for CsrfTokenHeader.
 type CsrfTokenHeader = string
 
+// UserIdPath defines model for UserIdPath.
+type UserIdPath = openapi_types.UUID
+
 // EchoBodyTooLarge defines model for EchoBodyTooLarge.
 type EchoBodyTooLarge = ErrorResponse
 
 // EchoReflection defines model for EchoReflection.
 type EchoReflection = EchoResponse
+
+// PostAdminUserPasswordResetParams defines parameters for PostAdminUserPasswordReset.
+type PostAdminUserPasswordResetParams struct {
+	// XCSRFToken The CSRF token from the devopsbin_csrf cookie. Required in practice on state-changing requests to authenticated routes; a missing or mismatched token yields a 403 response. Must match the token bound to the current session.
+	XCSRFToken *CsrfTokenHeader `json:"X-CSRF-Token,omitempty"`
+}
+
+// PostAdminUserUnlockParams defines parameters for PostAdminUserUnlock.
+type PostAdminUserUnlockParams struct {
+	// XCSRFToken The CSRF token from the devopsbin_csrf cookie. Required in practice on state-changing requests to authenticated routes; a missing or mismatched token yields a 403 response. Must match the token bound to the current session.
+	XCSRFToken *CsrfTokenHeader `json:"X-CSRF-Token,omitempty"`
+}
 
 // PostAuthLogoutParams defines parameters for PostAuthLogout.
 type PostAuthLogoutParams struct {
@@ -406,6 +517,21 @@ type PutEchoTextRequestBody = PutEchoTextBody
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// List all accounts
+	// (GET /admin/accounts)
+	GetAdminAccounts(w http.ResponseWriter, r *http.Request)
+	// List the transfers ledger
+	// (GET /admin/transfers)
+	GetAdminTransfers(w http.ResponseWriter, r *http.Request)
+	// List all users
+	// (GET /admin/users)
+	GetAdminUsers(w http.ResponseWriter, r *http.Request)
+	// Issue a password-reset token for a user
+	// (POST /admin/users/{id}/password-reset)
+	PostAdminUserPasswordReset(w http.ResponseWriter, r *http.Request, id UserIdPath, params PostAdminUserPasswordResetParams)
+	// Clear a user's login lockout
+	// (POST /admin/users/{id}/unlock)
+	PostAdminUserUnlock(w http.ResponseWriter, r *http.Request, id UserIdPath, params PostAdminUserUnlockParams)
 	// Log in with username and password
 	// (POST /auth/login)
 	PostAuthLogin(w http.ResponseWriter, r *http.Request)
@@ -480,6 +606,36 @@ type ServerInterface interface {
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
 
 type Unimplemented struct{}
+
+// List all accounts
+// (GET /admin/accounts)
+func (_ Unimplemented) GetAdminAccounts(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List the transfers ledger
+// (GET /admin/transfers)
+func (_ Unimplemented) GetAdminTransfers(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List all users
+// (GET /admin/users)
+func (_ Unimplemented) GetAdminUsers(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Issue a password-reset token for a user
+// (POST /admin/users/{id}/password-reset)
+func (_ Unimplemented) PostAdminUserPasswordReset(w http.ResponseWriter, r *http.Request, id UserIdPath, params PostAdminUserPasswordResetParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Clear a user's login lockout
+// (POST /admin/users/{id}/unlock)
+func (_ Unimplemented) PostAdminUserUnlock(w http.ResponseWriter, r *http.Request, id UserIdPath, params PostAdminUserUnlockParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
 
 // Log in with username and password
 // (POST /auth/login)
@@ -627,6 +783,148 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// GetAdminAccounts operation middleware
+func (siw *ServerInterfaceWrapper) GetAdminAccounts(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAdminAccounts(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAdminTransfers operation middleware
+func (siw *ServerInterfaceWrapper) GetAdminTransfers(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAdminTransfers(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAdminUsers operation middleware
+func (siw *ServerInterfaceWrapper) GetAdminUsers(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAdminUsers(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostAdminUserPasswordReset operation middleware
+func (siw *ServerInterfaceWrapper) PostAdminUserPasswordReset(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id UserIdPath
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PostAdminUserPasswordResetParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CsrfTokenHeader
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = &XCSRFToken
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostAdminUserPasswordReset(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostAdminUserUnlock operation middleware
+func (siw *ServerInterfaceWrapper) PostAdminUserUnlock(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id UserIdPath
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PostAdminUserUnlockParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CsrfTokenHeader
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = &XCSRFToken
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostAdminUserUnlock(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // PostAuthLogin operation middleware
 func (siw *ServerInterfaceWrapper) PostAuthLogin(w http.ResponseWriter, r *http.Request) {
@@ -1142,6 +1440,21 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	}
 
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/accounts", wrapper.GetAdminAccounts)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/transfers", wrapper.GetAdminTransfers)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/users", wrapper.GetAdminUsers)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/admin/users/{id}/password-reset", wrapper.PostAdminUserPasswordReset)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/admin/users/{id}/unlock", wrapper.PostAdminUserUnlock)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/auth/login", wrapper.PostAuthLogin)
 	})
 	r.Group(func(r chi.Router) {
@@ -1217,6 +1530,277 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 type EchoBodyTooLargeJSONResponse ErrorResponse
 
 type EchoReflectionJSONResponse EchoResponse
+
+type GetAdminAccountsRequestObject struct {
+}
+
+type GetAdminAccountsResponseObject interface {
+	VisitGetAdminAccountsResponse(w http.ResponseWriter) error
+}
+
+type GetAdminAccounts200JSONResponse AccountListResponse
+
+func (response GetAdminAccounts200JSONResponse) VisitGetAdminAccountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAdminAccounts401JSONResponse ErrorResponse
+
+func (response GetAdminAccounts401JSONResponse) VisitGetAdminAccountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAdminAccounts403JSONResponse ErrorResponse
+
+func (response GetAdminAccounts403JSONResponse) VisitGetAdminAccountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAdminTransfersRequestObject struct {
+}
+
+type GetAdminTransfersResponseObject interface {
+	VisitGetAdminTransfersResponse(w http.ResponseWriter) error
+}
+
+type GetAdminTransfers200JSONResponse TransferListResponse
+
+func (response GetAdminTransfers200JSONResponse) VisitGetAdminTransfersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAdminTransfers401JSONResponse ErrorResponse
+
+func (response GetAdminTransfers401JSONResponse) VisitGetAdminTransfersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAdminTransfers403JSONResponse ErrorResponse
+
+func (response GetAdminTransfers403JSONResponse) VisitGetAdminTransfersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAdminUsersRequestObject struct {
+}
+
+type GetAdminUsersResponseObject interface {
+	VisitGetAdminUsersResponse(w http.ResponseWriter) error
+}
+
+type GetAdminUsers200JSONResponse UserListResponse
+
+func (response GetAdminUsers200JSONResponse) VisitGetAdminUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAdminUsers401JSONResponse ErrorResponse
+
+func (response GetAdminUsers401JSONResponse) VisitGetAdminUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAdminUsers403JSONResponse ErrorResponse
+
+func (response GetAdminUsers403JSONResponse) VisitGetAdminUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostAdminUserPasswordResetRequestObject struct {
+	Id     UserIdPath `json:"id"`
+	Params PostAdminUserPasswordResetParams
+}
+
+type PostAdminUserPasswordResetResponseObject interface {
+	VisitPostAdminUserPasswordResetResponse(w http.ResponseWriter) error
+}
+
+type PostAdminUserPasswordReset200JSONResponse PasswordResetResponse
+
+func (response PostAdminUserPasswordReset200JSONResponse) VisitPostAdminUserPasswordResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostAdminUserPasswordReset401JSONResponse ErrorResponse
+
+func (response PostAdminUserPasswordReset401JSONResponse) VisitPostAdminUserPasswordResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostAdminUserPasswordReset403JSONResponse ErrorResponse
+
+func (response PostAdminUserPasswordReset403JSONResponse) VisitPostAdminUserPasswordResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostAdminUserPasswordReset404JSONResponse ErrorResponse
+
+func (response PostAdminUserPasswordReset404JSONResponse) VisitPostAdminUserPasswordResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostAdminUserUnlockRequestObject struct {
+	Id     UserIdPath `json:"id"`
+	Params PostAdminUserUnlockParams
+}
+
+type PostAdminUserUnlockResponseObject interface {
+	VisitPostAdminUserUnlockResponse(w http.ResponseWriter) error
+}
+
+type PostAdminUserUnlock204Response struct {
+}
+
+func (response PostAdminUserUnlock204Response) VisitPostAdminUserUnlockResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type PostAdminUserUnlock401JSONResponse ErrorResponse
+
+func (response PostAdminUserUnlock401JSONResponse) VisitPostAdminUserUnlockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostAdminUserUnlock403JSONResponse ErrorResponse
+
+func (response PostAdminUserUnlock403JSONResponse) VisitPostAdminUserUnlockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostAdminUserUnlock404JSONResponse ErrorResponse
+
+func (response PostAdminUserUnlock404JSONResponse) VisitPostAdminUserUnlockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
 
 type PostAuthLoginRequestObject struct {
 	Body *PostAuthLoginJSONRequestBody
@@ -2069,6 +2653,21 @@ func (response GetVersion200JSONResponse) VisitGetVersionResponse(w http.Respons
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// List all accounts
+	// (GET /admin/accounts)
+	GetAdminAccounts(ctx context.Context, request GetAdminAccountsRequestObject) (GetAdminAccountsResponseObject, error)
+	// List the transfers ledger
+	// (GET /admin/transfers)
+	GetAdminTransfers(ctx context.Context, request GetAdminTransfersRequestObject) (GetAdminTransfersResponseObject, error)
+	// List all users
+	// (GET /admin/users)
+	GetAdminUsers(ctx context.Context, request GetAdminUsersRequestObject) (GetAdminUsersResponseObject, error)
+	// Issue a password-reset token for a user
+	// (POST /admin/users/{id}/password-reset)
+	PostAdminUserPasswordReset(ctx context.Context, request PostAdminUserPasswordResetRequestObject) (PostAdminUserPasswordResetResponseObject, error)
+	// Clear a user's login lockout
+	// (POST /admin/users/{id}/unlock)
+	PostAdminUserUnlock(ctx context.Context, request PostAdminUserUnlockRequestObject) (PostAdminUserUnlockResponseObject, error)
 	// Log in with username and password
 	// (POST /auth/login)
 	PostAuthLogin(ctx context.Context, request PostAuthLoginRequestObject) (PostAuthLoginResponseObject, error)
@@ -2167,6 +2766,132 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// GetAdminAccounts operation middleware
+func (sh *strictHandler) GetAdminAccounts(w http.ResponseWriter, r *http.Request) {
+	var request GetAdminAccountsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAdminAccounts(ctx, request.(GetAdminAccountsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAdminAccounts")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAdminAccountsResponseObject); ok {
+		if err := validResponse.VisitGetAdminAccountsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAdminTransfers operation middleware
+func (sh *strictHandler) GetAdminTransfers(w http.ResponseWriter, r *http.Request) {
+	var request GetAdminTransfersRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAdminTransfers(ctx, request.(GetAdminTransfersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAdminTransfers")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAdminTransfersResponseObject); ok {
+		if err := validResponse.VisitGetAdminTransfersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAdminUsers operation middleware
+func (sh *strictHandler) GetAdminUsers(w http.ResponseWriter, r *http.Request) {
+	var request GetAdminUsersRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAdminUsers(ctx, request.(GetAdminUsersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAdminUsers")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAdminUsersResponseObject); ok {
+		if err := validResponse.VisitGetAdminUsersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostAdminUserPasswordReset operation middleware
+func (sh *strictHandler) PostAdminUserPasswordReset(w http.ResponseWriter, r *http.Request, id UserIdPath, params PostAdminUserPasswordResetParams) {
+	var request PostAdminUserPasswordResetRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostAdminUserPasswordReset(ctx, request.(PostAdminUserPasswordResetRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostAdminUserPasswordReset")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostAdminUserPasswordResetResponseObject); ok {
+		if err := validResponse.VisitPostAdminUserPasswordResetResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostAdminUserUnlock operation middleware
+func (sh *strictHandler) PostAdminUserUnlock(w http.ResponseWriter, r *http.Request, id UserIdPath, params PostAdminUserUnlockParams) {
+	var request PostAdminUserUnlockRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostAdminUserUnlock(ctx, request.(PostAdminUserUnlockRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostAdminUserUnlock")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostAdminUserUnlockResponseObject); ok {
+		if err := validResponse.VisitPostAdminUserUnlockResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // PostAuthLogin operation middleware
@@ -2809,82 +3534,97 @@ func (sh *strictHandler) GetVersion(w http.ResponseWriter, r *http.Request) {
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

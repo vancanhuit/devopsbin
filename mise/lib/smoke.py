@@ -735,6 +735,140 @@ def check_auth(base_url: str) -> None:
     print("[ok] auth/login (alice) -> 200 (seeded demo user)")
 
 
+def check_admin(base_url: str) -> None:
+    """Exercise the role-restricted admin surface end to end.
+
+    admin login -> list users/accounts/transfers (200) -> unlock and
+    password-reset a user (with CSRF) -> a non-admin user is denied (403). This
+    proves the session role gates the admin endpoints and that the admin
+    mutations honor the double-submit CSRF guard.
+    """
+    # The seeded admin logs in; capture the session and CSRF cookies.
+    admin_jar: dict[str, str] = {}
+    resp = http_send(
+        f"{base_url}{API_PREFIX}/auth/login",
+        "POST",
+        timeout=5.0,
+        data=json.dumps({"username": "admin", "password": "adminpass"}).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    expect(resp.status == 200, f"admin login: status {resp.status}, want 200")
+    _update_cookies(admin_jar, resp)
+    expect(
+        SESSION_COOKIE in admin_jar and CSRF_COOKIE in admin_jar,
+        f"admin login: cookies {sorted(admin_jar)!r}, want session and csrf cookies",
+    )
+    admin_csrf = admin_jar[CSRF_COOKIE]
+    print("[ok] admin login -> 200 (sets session + csrf cookies)")
+
+    # GET /admin/users returns the user list, including the admin itself.
+    resp = http_get(
+        f"{base_url}{API_PREFIX}/admin/users",
+        timeout=5.0,
+        headers={"Cookie": _cookie_header(admin_jar)},
+    )
+    expect(resp.status == 200, f"admin/users: status {resp.status}, want 200")
+    body = resp.json()
+    users = body.get("users") if isinstance(body, dict) else None
+    expect(
+        isinstance(users, list) and len(users) > 0,
+        f"admin/users: body {body!r}, want a non-empty users list",
+    )
+    admin_id = next(
+        (u.get("id") for u in users if u.get("username") == "admin"),
+        None,
+    )
+    expect(
+        isinstance(admin_id, str) and admin_id != "",
+        f"admin/users: no admin id in {users!r}",
+    )
+    print("[ok] admin/users -> 200 (lists users for an admin session)")
+
+    # GET /admin/accounts and /admin/transfers are admin-only reads.
+    for name in ("accounts", "transfers"):
+        resp = http_get(
+            f"{base_url}{API_PREFIX}/admin/{name}",
+            timeout=5.0,
+            headers={"Cookie": _cookie_header(admin_jar)},
+        )
+        expect(resp.status == 200, f"admin/{name}: status {resp.status}, want 200")
+        key = name
+        body = resp.json()
+        expect(
+            isinstance(body, dict) and isinstance(body.get(key), list),
+            f"admin/{name}: body {body!r}, want a {key} list",
+        )
+        print(f"[ok] admin/{name} -> 200 (admin-only read)")
+
+    # An admin mutation without the CSRF header is rejected (double-submit guard).
+    resp = http_send(
+        f"{base_url}{API_PREFIX}/admin/users/{admin_id}/unlock",
+        "POST",
+        timeout=5.0,
+        headers={"Cookie": _cookie_header(admin_jar)},
+    )
+    expect(
+        resp.status == 403,
+        f"admin/unlock (no csrf): status {resp.status}, want 403",
+    )
+    print("[ok] admin/users/{id}/unlock (no CSRF) -> 403 (double-submit guard)")
+
+    # With the CSRF header the unlock succeeds (a no-op when not locked).
+    resp = http_send(
+        f"{base_url}{API_PREFIX}/admin/users/{admin_id}/unlock",
+        "POST",
+        timeout=5.0,
+        headers={"Cookie": _cookie_header(admin_jar), "X-CSRF-Token": admin_csrf},
+    )
+    expect(resp.status == 204, f"admin/unlock: status {resp.status}, want 204")
+    print("[ok] admin/users/{id}/unlock -> 204 (clears login lockout)")
+
+    # password-reset mints a single-use token for the target user.
+    resp = http_send(
+        f"{base_url}{API_PREFIX}/admin/users/{admin_id}/password-reset",
+        "POST",
+        timeout=5.0,
+        headers={"Cookie": _cookie_header(admin_jar), "X-CSRF-Token": admin_csrf},
+    )
+    expect(
+        resp.status == 200,
+        f"admin/password-reset: status {resp.status}, want 200",
+    )
+    body = resp.json()
+    expect(
+        isinstance(body, dict)
+        and isinstance(body.get("token"), str)
+        and body["token"] != "",
+        f"admin/password-reset: body {body!r}, want a token",
+    )
+    print("[ok] admin/users/{id}/password-reset -> 200 (mints a reset token)")
+
+    # A non-admin session is forbidden from every admin endpoint.
+    username = f"smoke-rbac-{int(time.time() * 1000)}"
+    user_jar: dict[str, str] = {}
+    resp = http_send(
+        f"{base_url}{API_PREFIX}/auth/register",
+        "POST",
+        timeout=5.0,
+        data=json.dumps({"username": username, "password": "smoke-password"}).encode(
+            "utf-8"
+        ),
+        headers={"Content-Type": "application/json"},
+    )
+    expect(resp.status == 201, f"rbac register: status {resp.status}, want 201")
+    _update_cookies(user_jar, resp)
+    resp = http_get(
+        f"{base_url}{API_PREFIX}/admin/users",
+        timeout=5.0,
+        headers={"Cookie": _cookie_header(user_jar)},
+    )
+    expect(
+        resp.status == 403,
+        f"admin/users (non-admin): status {resp.status}, want 403",
+    )
+    print("[ok] admin/users (non-admin) -> 403 (role-gated)")
+
+
 def run_checks(base_url: str, timeout: float, expected_scheme: str = "http") -> None:
     """Run the full probe suite against a running stack."""
     print(f"Waiting for API at {base_url} ...")
@@ -753,6 +887,7 @@ def run_checks(base_url: str, timeout: float, expected_scheme: str = "http") -> 
     check_status(base_url)
     check_delay(base_url)
     check_auth(base_url)
+    check_admin(base_url)
     check_spa(base_url)
     check_openapi_spec(base_url)
     check_docs_ui(base_url, "/swagger", "swagger-ui")

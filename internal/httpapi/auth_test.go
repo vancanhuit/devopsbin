@@ -212,6 +212,8 @@ type authTestServer struct {
 	client   *http.Client
 	users    *fakeUsers
 	sessions *fakeSessionStore
+	lockout  *auth.Lockout
+	recovery *auth.Recovery
 }
 
 func newAuthTestServer(t *testing.T) *authTestServer {
@@ -247,6 +249,8 @@ func newAuthTestServer(t *testing.T) *authTestServer {
 		client:   &http.Client{Jar: jar},
 		users:    users,
 		sessions: sessions,
+		lockout:  lockout,
+		recovery: recovery,
 	}
 }
 

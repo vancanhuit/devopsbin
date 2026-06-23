@@ -334,3 +334,84 @@ describe('password endpoints', () => {
     expect(result.body).toEqual({ error: 'reset token is invalid or expired' })
   })
 })
+
+describe('admin endpoints', () => {
+  it('lists users via a safe GET without a CSRF header', async () => {
+    stubCookie('devopsbin_csrf=tok-admin')
+    const fetchMock = stubFetch(
+      async () =>
+        new Response(
+          JSON.stringify({
+            users: [
+              { id: '1', username: 'admin', role: 'admin', createdAt: '2024-01-01T00:00:00Z' },
+            ],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        )
+    )
+
+    const result = await call('/admin/users')
+
+    expect(fetchMock).toHaveBeenCalledOnce()
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(String(url)).toContain('/api/v1/admin/users')
+    expect(headersOf(init)['X-CSRF-Token']).toBeUndefined()
+    expect(result.status).toBe(200)
+    const body = result.body as { users: { id: string; username: string; role: string }[] }
+    expect(body.users).toHaveLength(1)
+    expect(body.users[0]).toMatchObject({ id: '1', username: 'admin', role: 'admin' })
+  })
+
+  it('reports a 403 when a non-admin lists accounts', async () => {
+    stubFetch(
+      async () =>
+        new Response(JSON.stringify({ error: 'insufficient privileges' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        })
+    )
+
+    const result = await call('/admin/accounts')
+
+    expect(result.ok).toBe(false)
+    expect(result.status).toBe(403)
+    expect(result.body).toEqual({ error: 'insufficient privileges' })
+  })
+
+  it('substitutes the id path param and attaches the CSRF header when unlocking a user', async () => {
+    stubCookie('devopsbin_csrf=tok-admin')
+    const fetchMock = stubFetch(async () => new Response(null, { status: 204 }))
+
+    const result = await call('/admin/users/{id}/unlock', { id: 'user-42' }, { method: 'POST' })
+
+    expect(fetchMock).toHaveBeenCalledOnce()
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(String(url)).toContain('/api/v1/admin/users/user-42/unlock')
+    expect(headersOf(init)['X-CSRF-Token']).toBe('tok-admin')
+    expect(result.status).toBe(204)
+  })
+
+  it('surfaces the minted reset token when resetting a user password', async () => {
+    stubCookie('devopsbin_csrf=tok-admin')
+    const fetchMock = stubFetch(
+      async () =>
+        new Response(JSON.stringify({ message: 'ok', token: 'admin-reset-tok' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+    )
+
+    const result = await call(
+      '/admin/users/{id}/password-reset',
+      { id: 'user-42' },
+      { method: 'POST' }
+    )
+
+    expect(fetchMock).toHaveBeenCalledOnce()
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(String(url)).toContain('/api/v1/admin/users/user-42/password-reset')
+    expect(headersOf(init)['X-CSRF-Token']).toBe('tok-admin')
+    expect(result.status).toBe(200)
+    expect(result.body).toEqual({ message: 'ok', token: 'admin-reset-tok' })
+  })
+})

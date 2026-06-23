@@ -9,6 +9,7 @@
 import {
   Configuration,
   ResponseError,
+  AdminApi,
   AuthApi,
   InspectApi,
   JSONApiResponse,
@@ -129,6 +130,7 @@ const inspect = new InspectApi(config)
 const status = new StatusApi(config)
 const latency = new LatencyApi(config)
 const auth = new AuthApi(config)
+const admin = new AdminApi(config)
 
 // echoRaw issues the /echo request for the selected HTTP method, forwarding an
 // optional request body (for body-carrying methods) and an optional raw query
@@ -211,6 +213,12 @@ const rawCalls = {
     auth.postAuthPasswordResetRaw({
       passwordResetRequest: jsonBody(opts) as unknown as PasswordResetRequest,
     }),
+  '/admin/users': () => admin.getAdminUsersRaw(),
+  '/admin/accounts': () => admin.getAdminAccountsRaw(),
+  '/admin/transfers': () => admin.getAdminTransfersRaw(),
+  '/admin/users/{id}/unlock': (args: CallArgs) => admin.postAdminUserUnlockRaw({ id: args.id }),
+  '/admin/users/{id}/password-reset': (args: CallArgs) =>
+    admin.postAdminUserPasswordResetRaw({ id: args.id }),
 } satisfies Record<string, (args: CallArgs, opts: CallOptions) => Promise<ApiResponse<unknown>>>
 
 // EndpointPath is the set of documented API paths the console can call.
@@ -494,6 +502,63 @@ export const endpoints: readonly Endpoint[] = [
         placeholder: '8–128 characters',
       },
     ],
+  },
+  {
+    method: 'GET',
+    path: '/admin/users',
+    title: 'List users',
+    description:
+      'Lists all users (id, username, role, created time). Requires an admin session; non-admins get 403.',
+    tag: 'Admin',
+    expectedStatuses: [200, 401, 403],
+    requiresAuth: true,
+    requiresRole: 'admin',
+  },
+  {
+    method: 'GET',
+    path: '/admin/accounts',
+    title: 'List accounts',
+    description:
+      'Lists every account across users with its owner. Requires an admin session; non-admins get 403.',
+    tag: 'Admin',
+    expectedStatuses: [200, 401, 403],
+    requiresAuth: true,
+    requiresRole: 'admin',
+  },
+  {
+    method: 'GET',
+    path: '/admin/transfers',
+    title: 'List transfers',
+    description:
+      'Lists the transfers ledger, most recent first. Requires an admin session; non-admins get 403.',
+    tag: 'Admin',
+    expectedStatuses: [200, 401, 403],
+    requiresAuth: true,
+    requiresRole: 'admin',
+  },
+  {
+    method: 'POST',
+    path: '/admin/users/{id}/unlock',
+    title: 'Unlock user',
+    description:
+      'Clears a user’s brute-force login lockout. Requires an admin session and CSRF token; non-admins get 403.',
+    tag: 'Admin',
+    expectedStatuses: [204, 401, 403, 404],
+    requiresAuth: true,
+    requiresRole: 'admin',
+    params: [{ name: 'id', label: 'User id', type: 'text', defaultValue: '' }],
+  },
+  {
+    method: 'POST',
+    path: '/admin/users/{id}/password-reset',
+    title: 'Reset user password',
+    description:
+      'Mints a single-use reset token for a user (returned in the response, demo only). Requires an admin session and CSRF token.',
+    tag: 'Admin',
+    expectedStatuses: [200, 401, 403, 404],
+    requiresAuth: true,
+    requiresRole: 'admin',
+    params: [{ name: 'id', label: 'User id', type: 'text', defaultValue: '' }],
   },
 ]
 
