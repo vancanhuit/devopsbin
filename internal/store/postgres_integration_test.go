@@ -377,3 +377,130 @@ func TestStore_SeedData(t *testing.T) {
 		}
 	}
 }
+
+// TestStore_ListUsers returns every user with id, username, and role. It must
+// include the seeded demo users and any freshly registered one.
+func TestStore_ListUsers(t *testing.T) {
+	applyMigrations(t)
+	s := newStore(t)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+
+	username := uniqueUsername(t)
+	if _, err := s.RegisterUser(ctx, store.NewUser{Username: username, PasswordHash: "hash", Role: "user"}); err != nil {
+		t.Fatalf("RegisterUser: %v", err)
+	}
+
+	users, err := s.ListUsers(ctx)
+	if err != nil {
+		t.Fatalf("ListUsers: %v", err)
+	}
+	roles := make(map[string]string, len(users))
+	for _, u := range users {
+		roles[u.Username] = u.Role
+		if u.ID == "" {
+			t.Fatalf("user %q has an empty id", u.Username)
+		}
+		if _, err := uuid.Parse(u.ID); err != nil {
+			t.Fatalf("user %q id %q is not a valid uuid: %v", u.Username, u.ID, err)
+		}
+		if u.CreatedAt.IsZero() {
+			t.Fatalf("user %q has a zero created_at", u.Username)
+		}
+	}
+	if roles["alice"] != "user" || roles["admin"] != "admin" || roles[username] != "user" {
+		t.Fatalf("unexpected roles: %+v", roles)
+	}
+}
+
+// TestStore_ListAllAccounts returns every account across users joined to its
+// owner's username.
+func TestStore_ListAllAccounts(t *testing.T) {
+	applyMigrations(t)
+	s := newStore(t)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+
+	username := uniqueUsername(t)
+	if _, err := s.RegisterUser(ctx, store.NewUser{Username: username, PasswordHash: "hash", Role: "user"}); err != nil {
+		t.Fatalf("RegisterUser: %v", err)
+	}
+
+	accounts, err := s.ListAllAccounts(ctx)
+	if err != nil {
+		t.Fatalf("ListAllAccounts: %v", err)
+	}
+	owners := make(map[string]bool, len(accounts))
+	for _, a := range accounts {
+		owners[a.OwnerUsername] = true
+		if a.ID == "" {
+			t.Fatalf("account for %q has an empty id", a.OwnerUsername)
+		}
+		if a.Name == "" {
+			t.Fatalf("account for %q has an empty name", a.OwnerUsername)
+		}
+	}
+	if !owners["alice"] || !owners["admin"] || !owners[username] {
+		t.Fatalf("expected accounts owned by alice, admin, and %q; got owners %+v", username, owners)
+	}
+}
+
+// TestStore_ListTransfers returns the transfers ledger joined to both account
+// names. It inserts a transfer between the two seeded accounts and asserts it
+// is listed with the expected fields.
+func TestStore_ListTransfers(t *testing.T) {
+	applyMigrations(t)
+	s := newStore(t)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+
+	conn, err := pgx.Connect(ctx, testPostgresURL(t))
+	if err != nil {
+		t.Fatalf("pgx.Connect: %v", err)
+	}
+	defer func() { _ = conn.Close(ctx) }()
+
+	var transferID string
+	err = conn.QueryRow(ctx, `
+		INSERT INTO transfers (from_account_id, to_account_id, amount_cents)
+		SELECT
+			(SELECT a.id FROM accounts a JOIN users u ON u.id = a.user_id WHERE u.username = 'alice'),
+			(SELECT a.id FROM accounts a JOIN users u ON u.id = a.user_id WHERE u.username = 'admin'),
+			777
+		RETURNING id::text
+	`).Scan(&transferID)
+	if err != nil {
+		t.Fatalf("insert transfer: %v", err)
+	}
+
+	transfers, err := s.ListTransfers(ctx)
+	if err != nil {
+		t.Fatalf("ListTransfers: %v", err)
+	}
+
+	var found *store.AdminTransfer
+	for i := range transfers {
+		if transfers[i].ID == transferID {
+			found = &transfers[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("inserted transfer %q not found in %d listed transfers", transferID, len(transfers))
+	}
+	if found.AmountCents != 777 {
+		t.Fatalf("amount_cents = %d, want 777", found.AmountCents)
+	}
+	if found.FromAccountName != "Checking" || found.ToAccountName != "Checking" {
+		t.Fatalf("account names = %q -> %q, want Checking -> Checking", found.FromAccountName, found.ToAccountName)
+	}
+	if found.FromAccountID == "" || found.ToAccountID == "" {
+		t.Fatalf("transfer has empty account ids: from=%q to=%q", found.FromAccountID, found.ToAccountID)
+	}
+	if found.CreatedAt.IsZero() {
+		t.Fatal("transfer has a zero created_at")
+	}
+}
