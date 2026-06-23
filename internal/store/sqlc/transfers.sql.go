@@ -11,6 +11,30 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const insertTransfer = `-- name: InsertTransfer :one
+INSERT INTO transfers (from_account_id, to_account_id, amount_cents)
+VALUES ($1, $2, $3)
+RETURNING id, created_at
+`
+
+type InsertTransferParams struct {
+	FromAccountID pgtype.UUID
+	ToAccountID   pgtype.UUID
+	AmountCents   int64
+}
+
+type InsertTransferRow struct {
+	ID        pgtype.UUID
+	CreatedAt pgtype.Timestamptz
+}
+
+func (q *Queries) InsertTransfer(ctx context.Context, arg InsertTransferParams) (InsertTransferRow, error) {
+	row := q.db.QueryRow(ctx, insertTransfer, arg.FromAccountID, arg.ToAccountID, arg.AmountCents)
+	var i InsertTransferRow
+	err := row.Scan(&i.ID, &i.CreatedAt)
+	return i, err
+}
+
 const listTransfers = `-- name: ListTransfers :many
 SELECT
     t.id,

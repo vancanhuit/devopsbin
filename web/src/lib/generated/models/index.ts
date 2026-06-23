@@ -23,6 +23,8 @@ export * from './SchemeResponse';
 export * from './StartupzResponse';
 export * from './StatusResponse';
 export * from './TransferListResponse';
+export * from './TransferRequest';
+export * from './TransferResult';
 export * from './UserAgentResponse';
 export * from './UserListResponse';
 export * from './UserResponse';

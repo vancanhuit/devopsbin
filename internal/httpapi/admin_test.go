@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"sort"
 	"testing"
 
 	"golang.org/x/crypto/bcrypt"
@@ -26,10 +27,28 @@ func (f *fakeUsers) ListUsers(_ context.Context) ([]store.AdminUser, error) {
 	return out, nil
 }
 
-// ListAllAccounts and ListTransfers are not exercised by the RBAC tests; the
-// fake holds no account or transfer data, so they return empty slices.
+// ListAllAccounts returns the seeded accounts, ordered by owner username then
+// account id to mirror the store query. ListTransfers is not exercised by these
+// tests and returns an empty slice.
 func (f *fakeUsers) ListAllAccounts(_ context.Context) ([]store.AdminAccount, error) {
-	return []store.AdminAccount{}, nil
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]store.AdminAccount, 0, len(f.accounts))
+	for _, a := range f.accounts {
+		out = append(out, store.AdminAccount{
+			ID:            a.id,
+			OwnerUsername: a.ownerUsername,
+			Name:          a.name,
+			BalanceCents:  a.balanceCents,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].OwnerUsername != out[j].OwnerUsername {
+			return out[i].OwnerUsername < out[j].OwnerUsername
+		}
+		return out[i].ID < out[j].ID
+	})
+	return out, nil
 }
 
 func (f *fakeUsers) ListTransfers(_ context.Context) ([]store.AdminTransfer, error) {

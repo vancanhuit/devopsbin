@@ -11,6 +11,27 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const adjustBalance = `-- name: AdjustBalance :one
+UPDATE accounts
+SET balance_cents = balance_cents + $1,
+    updated_at = now()
+WHERE id = $2
+RETURNING balance_cents
+`
+
+type AdjustBalanceParams struct {
+	DeltaCents int64
+	ID         pgtype.UUID
+}
+
+// Applies a signed delta to an account balance and returns the new balance.
+func (q *Queries) AdjustBalance(ctx context.Context, arg AdjustBalanceParams) (int64, error) {
+	row := q.db.QueryRow(ctx, adjustBalance, arg.DeltaCents, arg.ID)
+	var balance_cents int64
+	err := row.Scan(&balance_cents)
+	return balance_cents, err
+}
+
 const createAccount = `-- name: CreateAccount :one
 INSERT INTO accounts (user_id, name, balance_cents)
 VALUES ($1, $2, $3)
@@ -55,6 +76,42 @@ func (q *Queries) GetAccountByID(ctx context.Context, id pgtype.UUID) (Account, 
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const getAccountsForUpdate = `-- name: GetAccountsForUpdate :many
+SELECT id, user_id, balance_cents
+FROM accounts
+WHERE id = ANY($1::uuid[])
+ORDER BY id
+FOR UPDATE
+`
+
+type GetAccountsForUpdateRow struct {
+	ID           pgtype.UUID
+	UserID       pgtype.UUID
+	BalanceCents int64
+}
+
+// Locks the requested accounts FOR UPDATE in a deterministic id order so that
+// concurrent transfers touching the same pair cannot deadlock on lock ordering.
+func (q *Queries) GetAccountsForUpdate(ctx context.Context, ids []pgtype.UUID) ([]GetAccountsForUpdateRow, error) {
+	rows, err := q.db.Query(ctx, getAccountsForUpdate, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetAccountsForUpdateRow{}
+	for rows.Next() {
+		var i GetAccountsForUpdateRow
+		if err := rows.Scan(&i.ID, &i.UserID, &i.BalanceCents); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listAccountsByUser = `-- name: ListAccountsByUser :many
