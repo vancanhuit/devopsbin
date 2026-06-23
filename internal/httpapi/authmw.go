@@ -12,9 +12,25 @@ import (
 // sessionProtectedOps lists the operations that require a valid session. For
 // unsafe HTTP methods among these, a matching CSRF token is also required.
 var sessionProtectedOps = map[string]bool{
-	"PostAuthLogout":         true,
-	"GetAuthMe":              true,
-	"PostAuthPasswordChange": true,
+	"PostAuthLogout":             true,
+	"GetAuthMe":                  true,
+	"PostAuthPasswordChange":     true,
+	"GetAdminUsers":              true,
+	"GetAdminAccounts":           true,
+	"GetAdminTransfers":          true,
+	"PostAdminUserUnlock":        true,
+	"PostAdminUserPasswordReset": true,
+}
+
+// roleProtectedOps maps an operation to the role its session user must hold.
+// These operations are also session-protected, so the role check runs after a
+// valid session (and CSRF, for unsafe methods) has been established.
+var roleProtectedOps = map[string]string{
+	"GetAdminUsers":              "admin",
+	"GetAdminAccounts":           "admin",
+	"GetAdminTransfers":          "admin",
+	"PostAdminUserUnlock":        "admin",
+	"PostAdminUserPasswordReset": "admin",
 }
 
 // authMiddleware returns a strict-server middleware that enforces session and
@@ -39,6 +55,11 @@ func (s *Server) authMiddleware() StrictMiddlewareFunc {
 					writeJSONError(w, http.StatusForbidden, "invalid or missing CSRF token")
 					return nil, nil
 				}
+			}
+
+			if role, ok := roleProtectedOps[operationID]; ok && sess.Role != role {
+				writeJSONError(w, http.StatusForbidden, "insufficient privileges")
+				return nil, nil
 			}
 
 			// Slide the idle window. A failure here means the session expired

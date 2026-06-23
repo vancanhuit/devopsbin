@@ -71,6 +71,11 @@ All endpoints live under the `/api/v1` base path. The source of truth is
 | POST   | `/auth/password/change` | Auth  | Change the current user's password (rotates the session). |
 | POST   | `/auth/password/reset-request` | Auth | Issue a single-use reset token (returned in the body; no email). |
 | POST   | `/auth/password/reset` | Auth   | Consume a reset token and set a new password.           |
+| GET    | `/admin/users`        | Admin   | List all users (admin only; 403 otherwise).             |
+| GET    | `/admin/accounts`     | Admin   | List all accounts with their owners (admin only).       |
+| GET    | `/admin/transfers`    | Admin   | List the transfers ledger (admin only).                 |
+| POST   | `/admin/users/{id}/unlock` | Admin | Clear a user's login lockout (admin only).            |
+| POST   | `/admin/users/{id}/password-reset` | Admin | Mint a reset token for a user (admin only; returned in the body). |
 
 \* `/echo` accepts `GET`, `POST`, `PUT`, `PATCH`, and `DELETE`; the body
 methods reflect the request body back.
@@ -93,6 +98,13 @@ double-submit CSRF** check: send the `devopsbin_csrf` value back in the
 Sessions are hardened: the id and CSRF token are **rotated on login**
 (anti-fixation), sessions expire on a sliding **idle** timeout and a hard
 **absolute** timeout, and `logout` revokes the session server-side immediately.
+
+Access is **role-based**. Each user has a `role` (`user` or `admin`) carried in
+the session, so authorization needs no extra database lookup. The `/admin/*`
+endpoints require the `admin` role; a valid non-admin session is rejected with
+`403`. The admin surface is read-only listings (users, accounts, transfers) plus
+two operator actions (clear a user's login lockout, mint a reset token). Sign in
+as the seeded `admin` user to exercise it.
 
 
 ## Configuration

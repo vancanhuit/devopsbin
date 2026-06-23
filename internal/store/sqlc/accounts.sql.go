@@ -90,3 +90,44 @@ func (q *Queries) ListAccountsByUser(ctx context.Context, userID pgtype.UUID) ([
 	}
 	return items, nil
 }
+
+const listAllAccounts = `-- name: ListAllAccounts :many
+SELECT a.id, u.username AS owner_username, a.name, a.balance_cents, a.created_at
+FROM accounts a
+JOIN users u ON u.id = a.user_id
+ORDER BY u.username, a.id
+`
+
+type ListAllAccountsRow struct {
+	ID            pgtype.UUID
+	OwnerUsername string
+	Name          string
+	BalanceCents  int64
+	CreatedAt     pgtype.Timestamptz
+}
+
+func (q *Queries) ListAllAccounts(ctx context.Context) ([]ListAllAccountsRow, error) {
+	rows, err := q.db.Query(ctx, listAllAccounts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAllAccountsRow{}
+	for rows.Next() {
+		var i ListAllAccountsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OwnerUsername,
+			&i.Name,
+			&i.BalanceCents,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
