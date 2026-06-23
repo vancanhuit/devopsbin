@@ -11,3 +11,8 @@ FROM transfers t
 JOIN accounts fa ON fa.id = t.from_account_id
 JOIN accounts ta ON ta.id = t.to_account_id
 ORDER BY t.created_at DESC, t.id;
+
+-- name: InsertTransfer :one
+INSERT INTO transfers (from_account_id, to_account_id, amount_cents)
+VALUES (@from_account_id, @to_account_id, @amount_cents)
+RETURNING id, created_at;

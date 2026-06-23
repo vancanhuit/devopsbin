@@ -36,6 +36,7 @@ type userStore interface {
 	ListUsers(ctx context.Context) ([]store.AdminUser, error)
 	ListAllAccounts(ctx context.Context) ([]store.AdminAccount, error)
 	ListTransfers(ctx context.Context) ([]store.AdminTransfer, error)
+	Transfer(ctx context.Context, params store.TransferParams) (store.TransferResult, error)
 }
 
 // AuthSettings configures the auth handlers and cookies.

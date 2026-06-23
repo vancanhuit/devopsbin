@@ -1,5 +1,6 @@
 apis/AdminApi.ts
 apis/AuthApi.ts
+apis/DatabaseApi.ts
 apis/InspectApi.ts
 apis/LatencyApi.ts
 apis/RuntimeApi.ts
@@ -11,6 +12,7 @@ docs/AdminApi.md
 docs/AdminTransfer.md
 docs/AdminUser.md
 docs/AuthApi.md
+docs/DatabaseApi.md
 docs/DelayResponse.md
 docs/DependencyCheck.md
 docs/EchoResponse.md
@@ -34,6 +36,8 @@ docs/StartupzResponse.md
 docs/StatusApi.md
 docs/StatusResponse.md
 docs/TransferListResponse.md
+docs/TransferRequest.md
+docs/TransferResult.md
 docs/UserAgentResponse.md
 docs/UserListResponse.md
 docs/UserResponse.md
@@ -63,6 +67,8 @@ models/SchemeResponse.ts
 models/StartupzResponse.ts
 models/StatusResponse.ts
 models/TransferListResponse.ts
+models/TransferRequest.ts
+models/TransferResult.ts
 models/UserAgentResponse.ts
 models/UserListResponse.ts
 models/UserResponse.ts

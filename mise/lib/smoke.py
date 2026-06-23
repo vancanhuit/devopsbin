@@ -869,6 +869,147 @@ def check_admin(base_url: str) -> None:
     print("[ok] admin/users (non-admin) -> 403 (role-gated)")
 
 
+def check_database(base_url: str) -> None:
+    """Exercise the authenticated account-transfer flow end to end.
+
+    alice login -> list accounts (200) -> transfer alice's funds to another
+    account (200, balances reflect) -> transfer without CSRF (403) -> transfer
+    from an account alice does not own (403). This proves the session gate, the
+    double-submit CSRF guard, ownership enforcement, and that the transaction
+    actually moves money.
+    """
+    jar: dict[str, str] = {}
+    resp = http_send(
+        f"{base_url}{API_PREFIX}/auth/login",
+        "POST",
+        timeout=5.0,
+        data=json.dumps({"username": "alice", "password": "alicepass"}).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    expect(resp.status == 200, f"db login (alice): status {resp.status}, want 200")
+    _update_cookies(jar, resp)
+    csrf = jar[CSRF_COOKIE]
+    print("[ok] db login (alice) -> 200 (sets session + csrf cookies)")
+
+    # GET /accounts lists every account for any signed-in user.
+    resp = http_get(
+        f"{base_url}{API_PREFIX}/accounts",
+        timeout=5.0,
+        headers={"Cookie": _cookie_header(jar)},
+    )
+    expect(resp.status == 200, f"accounts: status {resp.status}, want 200")
+    body = resp.json()
+    accounts = body.get("accounts") if isinstance(body, dict) else None
+    expect(
+        isinstance(accounts, list) and len(accounts) >= 2,
+        f"accounts: body {body!r}, want at least two accounts",
+    )
+    print("[ok] accounts -> 200 (lists accounts for a signed-in user)")
+
+    # Pick alice's account as the source and any other account as the
+    # destination, so the ownership check passes for the happy path.
+    source = next((a for a in accounts if a.get("ownerUsername") == "alice"), None)
+    dest = next((a for a in accounts if a.get("id") != (source or {}).get("id")), None)
+    expect(
+        isinstance(source, dict) and isinstance(dest, dict),
+        f"accounts: could not find an alice-owned source and a distinct destination in {accounts!r}",
+    )
+    src_before = source["balanceCents"]
+    dst_before = dest["balanceCents"]
+    amount = 2500
+
+    # A transfer without the CSRF header is rejected by the double-submit guard.
+    resp = http_send(
+        f"{base_url}{API_PREFIX}/transfer",
+        "POST",
+        timeout=5.0,
+        data=json.dumps(
+            {
+                "fromAccountId": source["id"],
+                "toAccountId": dest["id"],
+                "amountCents": amount,
+            }
+        ).encode("utf-8"),
+        headers={"Cookie": _cookie_header(jar), "Content-Type": "application/json"},
+    )
+    expect(resp.status == 403, f"transfer (no csrf): status {resp.status}, want 403")
+    print("[ok] transfer (no CSRF) -> 403 (double-submit guard)")
+
+    # With the CSRF header the transfer commits and returns the new balances.
+    resp = http_send(
+        f"{base_url}{API_PREFIX}/transfer",
+        "POST",
+        timeout=5.0,
+        data=json.dumps(
+            {
+                "fromAccountId": source["id"],
+                "toAccountId": dest["id"],
+                "amountCents": amount,
+            }
+        ).encode("utf-8"),
+        headers={
+            "Cookie": _cookie_header(jar),
+            "Content-Type": "application/json",
+            "X-CSRF-Token": csrf,
+        },
+    )
+    expect(resp.status == 200, f"transfer: status {resp.status}, want 200")
+    body = resp.json()
+    expect(
+        isinstance(body, dict)
+        and body.get("fromBalanceCents") == src_before - amount
+        and body.get("toBalanceCents") == dst_before + amount,
+        f"transfer: body {body!r}, want balances debited/credited by {amount}",
+    )
+    print("[ok] transfer -> 200 (atomically moves funds; balances reflect)")
+
+    # The new balances are reflected on a fresh read of /accounts.
+    resp = http_get(
+        f"{base_url}{API_PREFIX}/accounts",
+        timeout=5.0,
+        headers={"Cookie": _cookie_header(jar)},
+    )
+    expect(
+        resp.status == 200, f"accounts (after transfer): status {resp.status}, want 200"
+    )
+    after = {a["id"]: a["balanceCents"] for a in resp.json().get("accounts", [])}
+    expect(
+        after.get(source["id"]) == src_before - amount
+        and after.get(dest["id"]) == dst_before + amount,
+        f"accounts (after transfer): balances {after!r} do not reflect the transfer",
+    )
+    print("[ok] accounts (after transfer) -> 200 (persisted balances reflect)")
+
+    # alice cannot move funds out of an account she does not own.
+    not_owned = next(
+        (a for a in accounts if a.get("ownerUsername") != "alice"),
+        None,
+    )
+    if isinstance(not_owned, dict):
+        resp = http_send(
+            f"{base_url}{API_PREFIX}/transfer",
+            "POST",
+            timeout=5.0,
+            data=json.dumps(
+                {
+                    "fromAccountId": not_owned["id"],
+                    "toAccountId": source["id"],
+                    "amountCents": amount,
+                }
+            ).encode("utf-8"),
+            headers={
+                "Cookie": _cookie_header(jar),
+                "Content-Type": "application/json",
+                "X-CSRF-Token": csrf,
+            },
+        )
+        expect(
+            resp.status == 403,
+            f"transfer (not owner): status {resp.status}, want 403",
+        )
+        print("[ok] transfer (not owner) -> 403 (ownership enforced)")
+
+
 def run_checks(base_url: str, timeout: float, expected_scheme: str = "http") -> None:
     """Run the full probe suite against a running stack."""
     print(f"Waiting for API at {base_url} ...")
@@ -888,6 +1029,7 @@ def run_checks(base_url: str, timeout: float, expected_scheme: str = "http") -> 
     check_delay(base_url)
     check_auth(base_url)
     check_admin(base_url)
+    check_database(base_url)
     check_spa(base_url)
     check_openapi_spec(base_url)
     check_docs_ui(base_url, "/swagger", "swagger-ui")

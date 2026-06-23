@@ -28,6 +28,14 @@ tags:
       Role-restricted administration endpoints. They require a valid session
       whose user has the `admin` role; non-admins receive a 403. State-changing
       requests also require a matching X-CSRF-Token header.
+  - name: Database
+    description: >
+      Authenticated database-transaction demos. Any logged-in user may list
+      accounts and transfer funds between them. Transfers run inside a single
+      transaction at a configurable isolation level (serializable by default)
+      and retry automatically on serialization conflicts, demonstrating
+      atomicity, isolation, and authorization. State-changing requests require a
+      matching X-CSRF-Token header.
 
 paths:
   /livez:
@@ -777,6 +785,96 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /accounts:
+    get:
+      operationId: getAccounts
+      tags:
+        - Database
+      summary: List all accounts
+      description: >
+        Returns every account across all users (id, owner username, name, and
+        balance) so a transfer source and destination can be chosen. Requires a
+        valid session; any authenticated user may call it.
+      responses:
+        "200":
+          description: The list of accounts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountListResponse"
+        "401":
+          description: No valid session is present.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /transfer:
+    post:
+      operationId: postTransfer
+      tags:
+        - Database
+      summary: Transfer funds between two accounts
+      description: >
+        Moves the requested amount from the source account to the destination
+        account inside a single transaction. The caller must own the source
+        account. The transaction runs at the chosen isolation level
+        (serializable by default) and retries automatically on serialization
+        conflicts. Requires a valid session and a matching X-CSRF-Token header.
+      parameters:
+        - $ref: "#/components/parameters/CsrfTokenHeader"
+        - $ref: "#/components/parameters/IsolationQuery"
+        - $ref: "#/components/parameters/HoldMsQuery"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransferRequest"
+      responses:
+        "200":
+          description: The transfer committed; the resulting balances are returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransferResult"
+        "400":
+          description: >
+            The request body is missing or malformed, the amount is not
+            positive, or the source and destination are the same account.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: No valid session is present.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: >
+            The caller does not own the source account, or the X-CSRF-Token is
+            missing or does not match the session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: The source or destination account does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: >
+            The source account has insufficient funds, or the transfer could not
+            commit after exhausting the serialization-retry budget.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   parameters:
     CsrfTokenHeader:
@@ -801,6 +899,38 @@ components:
         type: string
         format: uuid
       example: 018f9d6b-cbbf-7b2d-9b5d-ab8dfbbd4bed
+
+    IsolationQuery:
+      name: isolation
+      in: query
+      required: false
+      description: >
+        The transaction isolation level for the transfer. Defaults to
+        `serializable` when omitted.
+      schema:
+        type: string
+        enum:
+          - serializable
+          - repeatable-read
+          - read-committed
+        default: serializable
+      example: serializable
+
+    HoldMsQuery:
+      name: holdMs
+      in: query
+      required: false
+      description: >
+        Optional delay, in milliseconds, applied inside the transaction after
+        locking the accounts. Used to widen the contention window and
+        demonstrate isolation and serialization retries under concurrency.
+      schema:
+        type: integer
+        format: int32
+        minimum: 0
+        maximum: 5000
+        default: 0
+      example: 0
 
   requestBodies:
     EchoBody:
@@ -1370,3 +1500,84 @@ components:
           description: The transfers ledger, most recent first.
           items:
             $ref: "#/components/schemas/AdminTransfer"
+
+    TransferRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - fromAccountId
+        - toAccountId
+        - amountCents
+      properties:
+        fromAccountId:
+          type: string
+          format: uuid
+          description: The source account id; must be owned by the caller.
+          example: 018f9d6b-cbbf-7b2d-9b5d-ab8dfbbd4bed
+        toAccountId:
+          type: string
+          format: uuid
+          description: The destination account id.
+          example: 018f9d6b-cbbf-7b2d-9b5d-ab8dfbbd4bee
+        amountCents:
+          type: integer
+          format: int64
+          minimum: 1
+          description: The amount to transfer, in cents; must be positive.
+          example: 2500
+
+    TransferResult:
+      type: object
+      additionalProperties: false
+      required:
+        - transferId
+        - fromAccountId
+        - toAccountId
+        - fromBalanceCents
+        - toBalanceCents
+        - amountCents
+        - attempts
+        - createdAt
+      properties:
+        transferId:
+          type: string
+          format: uuid
+          description: The unique identifier of the recorded transfer.
+          example: 018f9d6b-cbbf-7b2d-9b5d-ab8dfbbd4bef
+        fromAccountId:
+          type: string
+          format: uuid
+          description: The source account id.
+          example: 018f9d6b-cbbf-7b2d-9b5d-ab8dfbbd4bed
+        toAccountId:
+          type: string
+          format: uuid
+          description: The destination account id.
+          example: 018f9d6b-cbbf-7b2d-9b5d-ab8dfbbd4bee
+        fromBalanceCents:
+          type: integer
+          format: int64
+          description: The source account balance, in cents, after the transfer.
+          example: 97500
+        toBalanceCents:
+          type: integer
+          format: int64
+          description: The destination account balance, in cents, after the transfer.
+          example: 102500
+        amountCents:
+          type: integer
+          format: int64
+          description: The amount transferred, in cents.
+          example: 2500
+        attempts:
+          type: integer
+          format: int32
+          description: >
+            The number of transaction attempts made, including serialization
+            retries.
+          example: 1
+        createdAt:
+          type: string
+          format: date-time
+          description: When the transfer was recorded.
+          example: "2025-01-15T09:30:00Z"

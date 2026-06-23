@@ -415,3 +415,143 @@ describe('admin endpoints', () => {
     expect(result.body).toEqual({ message: 'ok', token: 'admin-reset-tok' })
   })
 })
+
+describe('database endpoints', () => {
+  it('lists accounts via a safe GET without a CSRF header', async () => {
+    stubCookie('devopsbin_csrf=tok-user')
+    const fetchMock = stubFetch(
+      async () =>
+        new Response(
+          JSON.stringify({
+            accounts: [
+              {
+                id: 'acc-1',
+                ownerUsername: 'alice',
+                name: 'Checking',
+                balanceCents: 100000,
+                createdAt: '2024-01-01T00:00:00Z',
+              },
+            ],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        )
+    )
+
+    const result = await call('/accounts')
+
+    expect(fetchMock).toHaveBeenCalledOnce()
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(String(url)).toContain('/api/v1/accounts')
+    expect(headersOf(init)['X-CSRF-Token']).toBeUndefined()
+    expect(result.status).toBe(200)
+    const body = result.body as { accounts: { id: string; balanceCents: number }[] }
+    expect(body.accounts).toHaveLength(1)
+    expect(body.accounts[0]).toMatchObject({ id: 'acc-1', balanceCents: 100000 })
+  })
+
+  it('posts a transfer with the JSON body and attaches the CSRF header', async () => {
+    stubCookie('devopsbin_csrf=tok-user')
+    const fetchMock = stubFetch(
+      async () =>
+        new Response(
+          JSON.stringify({
+            transferId: 'xfer-1',
+            fromAccountId: 'acc-1',
+            toAccountId: 'acc-2',
+            fromBalanceCents: 97500,
+            toBalanceCents: 52500,
+            amountCents: 2500,
+            attempts: 1,
+            createdAt: '2024-01-01T00:00:00Z',
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        )
+    )
+
+    const result = await call(
+      '/transfer',
+      {},
+      {
+        method: 'POST',
+        contentType: 'application/json',
+        body: JSON.stringify({
+          fromAccountId: 'acc-1',
+          toAccountId: 'acc-2',
+          amountCents: 2500,
+        }),
+      }
+    )
+
+    expect(fetchMock).toHaveBeenCalledOnce()
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(String(url)).toContain('/api/v1/transfer')
+    expect(init.method).toBe('POST')
+    expect(headersOf(init)['X-CSRF-Token']).toBe('tok-user')
+    expect(String(init.body)).toContain('"fromAccountId":"acc-1"')
+    expect(result.status).toBe(200)
+    expect(result.body).toMatchObject({
+      transferId: 'xfer-1',
+      fromBalanceCents: 97500,
+      toBalanceCents: 52500,
+      attempts: 1,
+    })
+  })
+
+  it('reports a 409 on insufficient funds', async () => {
+    stubCookie('devopsbin_csrf=tok-user')
+    stubFetch(
+      async () =>
+        new Response(JSON.stringify({ error: 'insufficient funds' }), {
+          status: 409,
+          headers: { 'Content-Type': 'application/json' },
+        })
+    )
+
+    const result = await call(
+      '/transfer',
+      {},
+      {
+        method: 'POST',
+        contentType: 'application/json',
+        body: JSON.stringify({
+          fromAccountId: 'acc-1',
+          toAccountId: 'acc-2',
+          amountCents: 999999,
+        }),
+      }
+    )
+
+    expect(result.ok).toBe(false)
+    expect(result.status).toBe(409)
+    expect(result.body).toEqual({ error: 'insufficient funds' })
+  })
+
+  it('reports a 403 when the caller does not own the source account', async () => {
+    stubCookie('devopsbin_csrf=tok-user')
+    stubFetch(
+      async () =>
+        new Response(JSON.stringify({ error: 'you do not own the source account' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        })
+    )
+
+    const result = await call(
+      '/transfer',
+      {},
+      {
+        method: 'POST',
+        contentType: 'application/json',
+        body: JSON.stringify({
+          fromAccountId: 'someone-elses-acc',
+          toAccountId: 'acc-2',
+          amountCents: 2500,
+        }),
+      }
+    )
+
+    expect(result.ok).toBe(false)
+    expect(result.status).toBe(403)
+    expect(result.body).toEqual({ error: 'you do not own the source account' })
+  })
+})

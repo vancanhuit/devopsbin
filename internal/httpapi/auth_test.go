@@ -149,12 +149,27 @@ type fakeUsers struct {
 	mu     sync.Mutex
 	byName map[string]store.UserWithHash
 	byID   map[string]string // user id -> username, for ID-keyed lookups
+
+	// accounts holds seeded accounts keyed by account id, with the owner's user
+	// id, so the transfer handler tests can exercise ownership and balance
+	// checks without a database.
+	accounts map[string]*fakeAccount
+}
+
+// fakeAccount is an in-memory account used by the transfer handler tests.
+type fakeAccount struct {
+	id            string
+	ownerUserID   string
+	ownerUsername string
+	name          string
+	balanceCents  int64
 }
 
 func newFakeUsers() *fakeUsers {
 	return &fakeUsers{
-		byName: map[string]store.UserWithHash{},
-		byID:   map[string]string{},
+		byName:   map[string]store.UserWithHash{},
+		byID:     map[string]string{},
+		accounts: map[string]*fakeAccount{},
 	}
 }
 

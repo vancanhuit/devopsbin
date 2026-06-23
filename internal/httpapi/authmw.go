@@ -15,6 +15,8 @@ var sessionProtectedOps = map[string]bool{
 	"PostAuthLogout":             true,
 	"GetAuthMe":                  true,
 	"PostAuthPasswordChange":     true,
+	"GetAccounts":                true,
+	"PostTransfer":               true,
 	"GetAdminUsers":              true,
 	"GetAdminAccounts":           true,
 	"GetAdminTransfers":          true,
