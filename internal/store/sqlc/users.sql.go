@@ -84,6 +84,44 @@ func (q *Queries) GetUserByUsername(ctx context.Context, username string) (User,
 	return i, err
 }
 
+const listUsers = `-- name: ListUsers :many
+SELECT id, username, role, created_at
+FROM users
+ORDER BY created_at, id
+`
+
+type ListUsersRow struct {
+	ID        pgtype.UUID
+	Username  string
+	Role      string
+	CreatedAt pgtype.Timestamptz
+}
+
+func (q *Queries) ListUsers(ctx context.Context) ([]ListUsersRow, error) {
+	rows, err := q.db.Query(ctx, listUsers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListUsersRow{}
+	for rows.Next() {
+		var i ListUsersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Username,
+			&i.Role,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateUserPassword = `-- name: UpdateUserPassword :one
 UPDATE users
 SET password_hash = $2, updated_at = now()

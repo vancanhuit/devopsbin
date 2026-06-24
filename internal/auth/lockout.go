@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"fmt"
 	"time"
 )
 
@@ -108,6 +109,22 @@ func (l *Lockout) Reset(ctx context.Context, username, ip string) {
 	for _, key := range keys {
 		_ = l.store.Del(ctx, key)
 	}
+}
+
+// Unlock clears the failure counter and lock for username. Unlike Reset it does
+// not touch any IP-scoped keys, since an administrator unlocking an account
+// knows the user but not the originating IP(s). A store error is returned so the
+// caller can report the failure.
+func (l *Lockout) Unlock(ctx context.Context, username string) error {
+	for _, key := range []string{
+		loginFailUserKeyPrefix + username,
+		loginLockUserKeyPrefix + username,
+	} {
+		if err := l.store.Del(ctx, key); err != nil {
+			return fmt.Errorf("auth: unlock %q: %w", username, err)
+		}
+	}
+	return nil
 }
 
 func (l *Lockout) lockKeys(username, ip string) []string {

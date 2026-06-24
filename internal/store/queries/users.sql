@@ -18,3 +18,8 @@ UPDATE users
 SET password_hash = $2, updated_at = now()
 WHERE id = $1
 RETURNING id;
+
+-- name: ListUsers :many
+SELECT id, username, role, created_at
+FROM users
+ORDER BY created_at, id;
