@@ -78,6 +78,7 @@ All endpoints live under the `/api/v1` base path. The source of truth is
 | POST   | `/admin/users/{id}/password-reset` | Admin | Mint a reset token for a user (admin only; returned in the body). |
 | GET    | `/accounts`           | Database | List all accounts (any signed-in user).                |
 | POST   | `/transfer`           | Database | Transfer funds between two accounts in one transaction. |
+| GET    | `/ratelimit`          | RateLimit | Per-IP rate-limit probe; `429` once the window limit is exceeded. |
 
 \* `/echo` accepts `GET`, `POST`, `PUT`, `PATCH`, and `DELETE`; the body
 methods reflect the request body back.
@@ -126,6 +127,25 @@ concurrent transfers never lose or double-spend. The optional `?isolation=`
 parameters let you vary the isolation level and widen the contention window to
 observe the behaviour. Sign in as the seeded `alice` user, list accounts, and
 transfer between two of them to try it.
+
+### Rate limiting
+
+The `RateLimit` endpoint demonstrates a **Redis-backed per-IP fixed-window**
+limiter. `GET /ratelimit` counts each request against a window keyed by the
+caller's client IP (trusted-proxy aware, the same way `/ip` resolves it); while
+within the limit it returns `200`, and once the limit is exceeded it returns
+`429` until the window resets. Every response carries the standard
+`RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers, and the
+`429` also includes `Retry-After`. Send the request repeatedly from the console
+to cross the threshold.
+
+The counter is a single atomic `INCR` with the window TTL set on the first
+increment (via a Lua script), so the limit is enforced **consistently across
+every replica** rather than per process. It is a best-effort control: if Redis
+is unavailable the limiter **fails open** (allows the request) so a cache outage
+degrades to no limiting rather than rejecting every caller. The limit and window
+are configurable (see `RATELIMIT_*`); only this demo route is limited, not the
+API globally.
 
 
 ## Configuration
@@ -195,6 +215,13 @@ TLS modes derived from the above:
 | `AUTH_LOGIN_WINDOW`        | `15m`               | Rolling window over which failed logins are counted.                   |
 | `AUTH_LOGIN_MAX_ATTEMPTS`  | `5`                 | Failed logins (per user and per IP) before lockout (≥ 1).             |
 | `AUTH_LOCK_TTL`            | `15m`               | How long a login lockout lasts; `423` includes a `Retry-After` header. |
+
+### Rate limit (`RATELIMIT_`)
+
+| Variable            | Default | Description                                                          |
+| ------------------- | ------- | ------------------------------------------------------------------- |
+| `RATELIMIT_LIMIT`   | `5`     | Max `/ratelimit` requests per client IP within each window (≥ 1).   |
+| `RATELIMIT_WINDOW`  | `10s`   | Length of the fixed window over which `RATELIMIT_LIMIT` is counted. |
 
 ## CLI
 

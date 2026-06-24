@@ -555,3 +555,53 @@ describe('database endpoints', () => {
     expect(result.body).toEqual({ error: 'you do not own the source account' })
   })
 })
+
+describe('call /ratelimit', () => {
+  it('reports a 200 with the rate-limit headers while within the limit', async () => {
+    stubFetch(
+      async () =>
+        new Response(JSON.stringify({ limit: 5, remaining: 4, reset: 8 }), {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+            'RateLimit-Limit': '5',
+            'RateLimit-Remaining': '4',
+            'RateLimit-Reset': '8',
+          },
+        })
+    )
+
+    const result = await call('/ratelimit')
+
+    expect(result.ok).toBe(true)
+    expect(result.status).toBe(200)
+    expect(result.body).toEqual({ limit: 5, remaining: 4, reset: 8 })
+    expect(result.headers?.['ratelimit-limit']).toBe('5')
+    expect(result.headers?.['ratelimit-remaining']).toBe('4')
+    expect(result.headers?.['ratelimit-reset']).toBe('8')
+  })
+
+  it('reports a 429 with Retry-After once the limit is exceeded', async () => {
+    stubFetch(
+      async () =>
+        new Response(JSON.stringify({ error: 'rate limit exceeded' }), {
+          status: 429,
+          headers: {
+            'Content-Type': 'application/json',
+            'RateLimit-Limit': '5',
+            'RateLimit-Remaining': '0',
+            'RateLimit-Reset': '6',
+            'Retry-After': '6',
+          },
+        })
+    )
+
+    const result = await call('/ratelimit')
+
+    expect(result.ok).toBe(false)
+    expect(result.status).toBe(429)
+    expect(result.body).toEqual({ error: 'rate limit exceeded' })
+    expect(result.headers?.['ratelimit-remaining']).toBe('0')
+    expect(result.headers?.['retry-after']).toBe('6')
+  })
+})

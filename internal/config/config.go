@@ -145,6 +145,16 @@ type AuthConfig struct {
 	LockTTL time.Duration `env:"LOCK_TTL" envDefault:"15m" json:"lock_ttl"`
 }
 
+// RateLimitConfig configures the per-IP fixed-window limiter applied to the
+// rate-limit demo endpoint.
+type RateLimitConfig struct {
+	// Limit is the maximum number of requests allowed from a single client IP
+	// within each Window before further requests are rejected with 429.
+	Limit int `env:"LIMIT" envDefault:"5" json:"limit"`
+	// Window is the length of the fixed window over which Limit is counted.
+	Window time.Duration `env:"WINDOW" envDefault:"10s" json:"window"`
+}
+
 type RedisConfig struct {
 	// Mode selects the client topology: standalone, cluster, or sentinel.
 	Mode RedisMode `env:"MODE" envDefault:"standalone" json:"mode"`
@@ -168,11 +178,12 @@ type RedisConfig struct {
 
 // Config is the resolved service configuration.
 type Config struct {
-	App      AppConfig      `envPrefix:"APP_"`
-	Http     HttpConfig     `envPrefix:"HTTP_"`
-	Postgres PostgresConfig `envPrefix:"POSTGRES_"`
-	Redis    RedisConfig    `envPrefix:"REDIS_"`
-	Auth     AuthConfig     `envPrefix:"AUTH_"`
+	App       AppConfig       `envPrefix:"APP_"`
+	Http      HttpConfig      `envPrefix:"HTTP_"`
+	Postgres  PostgresConfig  `envPrefix:"POSTGRES_"`
+	Redis     RedisConfig     `envPrefix:"REDIS_"`
+	Auth      AuthConfig      `envPrefix:"AUTH_"`
+	RateLimit RateLimitConfig `envPrefix:"RATELIMIT_"`
 }
 
 // Load reads the configuration from environment variables and applies the
@@ -236,6 +247,10 @@ func (c Config) Validate() error {
 	}
 
 	if err := c.Auth.Validate(); err != nil {
+		return err
+	}
+
+	if err := c.RateLimit.Validate(); err != nil {
 		return err
 	}
 
@@ -345,6 +360,17 @@ func (a AuthConfig) Validate() error {
 	}
 	if a.LockTTL <= 0 {
 		return fmt.Errorf("config: lock_ttl must be positive")
+	}
+	return nil
+}
+
+// Validate returns a non-nil error when the rate-limit settings are invalid.
+func (r RateLimitConfig) Validate() error {
+	if r.Limit < 1 {
+		return fmt.Errorf("config: ratelimit_limit must be at least 1, got %d", r.Limit)
+	}
+	if r.Window <= 0 {
+		return fmt.Errorf("config: ratelimit_window must be positive")
 	}
 	return nil
 }

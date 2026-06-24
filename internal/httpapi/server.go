@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/vancanhuit/devopsbin/internal/auth"
+	"github.com/vancanhuit/devopsbin/internal/ratelimit"
 	"github.com/vancanhuit/devopsbin/internal/store"
 )
 
@@ -37,6 +38,12 @@ type userStore interface {
 	ListAllAccounts(ctx context.Context) ([]store.AdminAccount, error)
 	ListTransfers(ctx context.Context) ([]store.AdminTransfer, error)
 	Transfer(ctx context.Context, params store.TransferParams) (store.TransferResult, error)
+}
+
+// rateLimiter is the subset of the rate limiter the demo endpoint needs. The
+// concrete *ratelimit.Limiter satisfies it; tests can substitute a fake.
+type rateLimiter interface {
+	Allow(ctx context.Context, scope string) ratelimit.Result
 }
 
 // AuthSettings configures the auth handlers and cookies.
@@ -72,6 +79,7 @@ type Server struct {
 	authSettings   AuthSettings
 	recovery       *auth.Recovery
 	lockout        *auth.Lockout
+	ratelimiter    rateLimiter
 }
 
 // Option configures a Server.
@@ -173,6 +181,15 @@ func WithPasswordRecovery(recovery *auth.Recovery) Option {
 func WithLoginLockout(lockout *auth.Lockout) Option {
 	return func(s *Server) {
 		s.lockout = lockout
+	}
+}
+
+// WithRateLimiter wires the per-IP limiter used by the rate-limit demo
+// endpoint. When unset, that endpoint does not throttle and always reports a
+// full allowance.
+func WithRateLimiter(limiter rateLimiter) Option {
+	return func(s *Server) {
+		s.ratelimiter = limiter
 	}
 }
 

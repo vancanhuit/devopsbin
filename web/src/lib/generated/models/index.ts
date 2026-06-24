@@ -17,6 +17,7 @@ export * from './PasswordChangeRequest';
 export * from './PasswordResetRequest';
 export * from './PasswordResetRequestRequest';
 export * from './PasswordResetResponse';
+export * from './RateLimitResponse';
 export * from './ReadyzResponse';
 export * from './RegisterRequest';
 export * from './SchemeResponse';
