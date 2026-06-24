@@ -52,6 +52,8 @@ var envKeys = []string{
 	"AUTH_LOGIN_WINDOW",
 	"AUTH_LOGIN_MAX_ATTEMPTS",
 	"AUTH_LOCK_TTL",
+	"RATELIMIT_LIMIT",
+	"RATELIMIT_WINDOW",
 }
 
 func clearEnv(t *testing.T) {
@@ -80,6 +82,13 @@ func validAuth() config.AuthConfig {
 		LoginWindow:        15 * time.Minute,
 		LoginMaxAttempts:   5,
 		LockTTL:            15 * time.Minute,
+	}
+}
+
+func validRateLimit() config.RateLimitConfig {
+	return config.RateLimitConfig{
+		Limit:  5,
+		Window: 10 * time.Second,
 	}
 }
 
@@ -127,6 +136,12 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.Redis.DB != 0 {
 		t.Errorf("Redis.DB = %d, want 0", cfg.Redis.DB)
 	}
+	if cfg.RateLimit.Limit != 5 {
+		t.Errorf("RateLimit.Limit = %d, want 5", cfg.RateLimit.Limit)
+	}
+	if cfg.RateLimit.Window != 10*time.Second {
+		t.Errorf("RateLimit.Window = %v, want 10s", cfg.RateLimit.Window)
+	}
 }
 
 func TestLoad_EnvOverrides(t *testing.T) {
@@ -147,6 +162,8 @@ func TestLoad_EnvOverrides(t *testing.T) {
 	t.Setenv("REDIS_USERNAME", "appuser")
 	t.Setenv("REDIS_PASSWORD", "s3cret")
 	t.Setenv("REDIS_TLS", "true")
+	t.Setenv("RATELIMIT_LIMIT", "20")
+	t.Setenv("RATELIMIT_WINDOW", "1m")
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -187,6 +204,10 @@ func TestLoad_EnvOverrides(t *testing.T) {
 			LoginMaxAttempts:   5,
 			LockTTL:            15 * time.Minute,
 		},
+		RateLimit: config.RateLimitConfig{
+			Limit:  20,
+			Window: time.Minute,
+		},
 	}
 	if !reflect.DeepEqual(cfg, want) {
 		t.Errorf("cfg = %+v\nwant %+v", cfg, want)
@@ -205,10 +226,11 @@ func TestLoad_InvalidLogLevel(t *testing.T) {
 func TestValidate(t *testing.T) {
 	base := func() config.Config {
 		return config.Config{
-			App:   config.AppConfig{LogLevel: "info"},
-			Http:  config.HttpConfig{Addr: ":8080", ReadTimeout: time.Second, WriteTimeout: time.Second, IdleTimeout: time.Second, ShutdownTimeout: time.Second, RequestTimeout: time.Second},
-			Redis: config.RedisConfig{Mode: config.RedisStandalone, Addrs: []string{"localhost:6379"}},
-			Auth:  validAuth(),
+			App:       config.AppConfig{LogLevel: "info"},
+			Http:      config.HttpConfig{Addr: ":8080", ReadTimeout: time.Second, WriteTimeout: time.Second, IdleTimeout: time.Second, ShutdownTimeout: time.Second, RequestTimeout: time.Second},
+			Redis:     config.RedisConfig{Mode: config.RedisStandalone, Addrs: []string{"localhost:6379"}},
+			Auth:      validAuth(),
+			RateLimit: validRateLimit(),
 		}
 	}
 
@@ -233,6 +255,10 @@ func TestValidate(t *testing.T) {
 		{"zero login window", func(c *config.Config) { c.Auth.LoginWindow = 0 }, true},
 		{"zero login max attempts", func(c *config.Config) { c.Auth.LoginMaxAttempts = 0 }, true},
 		{"zero lock ttl", func(c *config.Config) { c.Auth.LockTTL = 0 }, true},
+		{"zero ratelimit limit", func(c *config.Config) { c.RateLimit.Limit = 0 }, true},
+		{"negative ratelimit limit", func(c *config.Config) { c.RateLimit.Limit = -1 }, true},
+		{"zero ratelimit window", func(c *config.Config) { c.RateLimit.Window = 0 }, true},
+		{"negative ratelimit window", func(c *config.Config) { c.RateLimit.Window = -time.Second }, true},
 		{"empty addr", func(c *config.Config) { c.Http.Addr = "" }, true},
 		{"zero read timeout", func(c *config.Config) { c.Http.ReadTimeout = 0 }, true},
 		{"zero write timeout", func(c *config.Config) { c.Http.WriteTimeout = 0 }, true},
@@ -295,10 +321,11 @@ func TestValidate_TLS(t *testing.T) {
 
 	base := func() config.Config {
 		return config.Config{
-			App:   config.AppConfig{LogLevel: "info"},
-			Http:  config.HttpConfig{Addr: ":8080", ReadTimeout: time.Second, WriteTimeout: time.Second, IdleTimeout: time.Second, ShutdownTimeout: time.Second, RequestTimeout: time.Second},
-			Redis: config.RedisConfig{Mode: config.RedisStandalone, Addrs: []string{"localhost:6379"}},
-			Auth:  validAuth(),
+			App:       config.AppConfig{LogLevel: "info"},
+			Http:      config.HttpConfig{Addr: ":8080", ReadTimeout: time.Second, WriteTimeout: time.Second, IdleTimeout: time.Second, ShutdownTimeout: time.Second, RequestTimeout: time.Second},
+			Redis:     config.RedisConfig{Mode: config.RedisStandalone, Addrs: []string{"localhost:6379"}},
+			Auth:      validAuth(),
+			RateLimit: validRateLimit(),
 		}
 	}
 
@@ -399,10 +426,11 @@ func TestValidate_MTLS(t *testing.T) {
 
 	base := func() config.Config {
 		return config.Config{
-			App:   config.AppConfig{LogLevel: "info"},
-			Http:  config.HttpConfig{Addr: ":8080", ReadTimeout: time.Second, WriteTimeout: time.Second, IdleTimeout: time.Second, ShutdownTimeout: time.Second, RequestTimeout: time.Second},
-			Redis: config.RedisConfig{Mode: config.RedisStandalone, Addrs: []string{"localhost:6379"}},
-			Auth:  validAuth(),
+			App:       config.AppConfig{LogLevel: "info"},
+			Http:      config.HttpConfig{Addr: ":8080", ReadTimeout: time.Second, WriteTimeout: time.Second, IdleTimeout: time.Second, ShutdownTimeout: time.Second, RequestTimeout: time.Second},
+			Redis:     config.RedisConfig{Mode: config.RedisStandalone, Addrs: []string{"localhost:6379"}},
+			Auth:      validAuth(),
+			RateLimit: validRateLimit(),
 		}
 	}
 
@@ -463,10 +491,11 @@ func TestHttpConfig_MTLSEnabled(t *testing.T) {
 func TestValidate_TrustedProxies(t *testing.T) {
 	base := func() config.Config {
 		return config.Config{
-			App:   config.AppConfig{LogLevel: "info"},
-			Http:  config.HttpConfig{Addr: ":8080", ReadTimeout: time.Second, WriteTimeout: time.Second, IdleTimeout: time.Second, ShutdownTimeout: time.Second, RequestTimeout: time.Second},
-			Redis: config.RedisConfig{Mode: config.RedisStandalone, Addrs: []string{"localhost:6379"}},
-			Auth:  validAuth(),
+			App:       config.AppConfig{LogLevel: "info"},
+			Http:      config.HttpConfig{Addr: ":8080", ReadTimeout: time.Second, WriteTimeout: time.Second, IdleTimeout: time.Second, ShutdownTimeout: time.Second, RequestTimeout: time.Second},
+			Redis:     config.RedisConfig{Mode: config.RedisStandalone, Addrs: []string{"localhost:6379"}},
+			Auth:      validAuth(),
+			RateLimit: validRateLimit(),
 		}
 	}
 

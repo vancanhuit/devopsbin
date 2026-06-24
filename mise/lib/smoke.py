@@ -29,7 +29,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field as dataclass_field
 
 DEFAULT_BASE_URL = "http://127.0.0.1:8080"
 API_PREFIX = "/api/v1"
@@ -96,6 +96,7 @@ class Response:
     content_type: str
     location: str = ""
     set_cookies: tuple[str, ...] = ()
+    headers: dict[str, str] = dataclass_field(default_factory=dict)
 
     def json(self) -> object:
         return json.loads(self.body)
@@ -167,6 +168,7 @@ def http_get(
                 content_type=resp.headers.get("Content-Type", ""),
                 location=resp.headers.get("Location", ""),
                 set_cookies=tuple(resp.headers.get_all("Set-Cookie") or []),
+                headers={k.lower(): v for k, v in resp.headers.items()},
             )
     except urllib.error.HTTPError as exc:
         # Non-2xx (including redirects when not followed) still carries a status,
@@ -179,6 +181,9 @@ def http_get(
             set_cookies=tuple(exc.headers.get_all("Set-Cookie") or [])
             if exc.headers
             else (),
+            headers={k.lower(): v for k, v in exc.headers.items()}
+            if exc.headers
+            else {},
         )
     if log:
         _log_exchange("GET", url, headers, response)
@@ -210,6 +215,7 @@ def http_send(
                 content_type=resp.headers.get("Content-Type", ""),
                 location=resp.headers.get("Location", ""),
                 set_cookies=tuple(resp.headers.get_all("Set-Cookie") or []),
+                headers={k.lower(): v for k, v in resp.headers.items()},
             )
     except urllib.error.HTTPError as exc:
         response = Response(
@@ -220,6 +226,9 @@ def http_send(
             set_cookies=tuple(exc.headers.get_all("Set-Cookie") or [])
             if exc.headers
             else (),
+            headers={k.lower(): v for k, v in exc.headers.items()}
+            if exc.headers
+            else {},
         )
     if log:
         _log_exchange(method, url, headers, response)
@@ -1010,6 +1019,57 @@ def check_database(base_url: str) -> None:
         print("[ok] transfer (not owner) -> 403 (ownership enforced)")
 
 
+def check_ratelimit(base_url: str) -> None:
+    # The demo route counts each request against a per-IP fixed window. Spam it
+    # until a 429 appears, asserting the standard RateLimit-* headers throughout
+    # and a Retry-After on the rejection. The smoke stack uses the defaults
+    # (RATELIMIT_LIMIT=5), so a small burst is enough; the loop is bounded so a
+    # misconfiguration fails loudly instead of hanging.
+    url = f"{base_url}{API_PREFIX}/ratelimit"
+    max_requests = 25
+    limited: Response | None = None
+    allowed = 0
+    for _ in range(max_requests):
+        resp = http_get(url, timeout=5.0)
+        for name in ("ratelimit-limit", "ratelimit-remaining", "ratelimit-reset"):
+            expect(
+                name in resp.headers,
+                f"ratelimit: missing {name} header (status {resp.status})",
+            )
+        if resp.status == 429:
+            limited = resp
+            break
+        expect(
+            resp.status == 200,
+            f"ratelimit: status {resp.status}, want 200 or 429",
+        )
+        allowed += 1
+
+    expect(
+        limited is not None,
+        f"ratelimit: no 429 after {max_requests} requests "
+        f"({allowed} allowed); limiter not enforcing",
+    )
+    assert limited is not None  # for type-checkers; guarded by expect above
+    expect(
+        limited.headers.get("ratelimit-remaining") == "0",
+        f"ratelimit (429): RateLimit-Remaining {limited.headers.get('ratelimit-remaining')!r}, want 0",
+    )
+    expect(
+        bool(limited.headers.get("retry-after")),
+        "ratelimit (429): missing Retry-After header",
+    )
+    body = limited.json()
+    expect(
+        isinstance(body, dict) and bool(body.get("error")),
+        f"ratelimit (429): body {body!r}, want non-empty error",
+    )
+    print(
+        f"[ok] ratelimit -> {allowed} allowed then 429 with Retry-After "
+        "(per-IP fixed window enforced)"
+    )
+
+
 def run_checks(base_url: str, timeout: float, expected_scheme: str = "http") -> None:
     """Run the full probe suite against a running stack."""
     print(f"Waiting for API at {base_url} ...")
@@ -1030,6 +1090,7 @@ def run_checks(base_url: str, timeout: float, expected_scheme: str = "http") -> 
     check_auth(base_url)
     check_admin(base_url)
     check_database(base_url)
+    check_ratelimit(base_url)
     check_spa(base_url)
     check_openapi_spec(base_url)
     check_docs_ui(base_url, "/swagger", "swagger-ui")

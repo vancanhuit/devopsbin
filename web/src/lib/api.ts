@@ -15,6 +15,7 @@ import {
   InspectApi,
   JSONApiResponse,
   LatencyApi,
+  RateLimitApi,
   RuntimeApi,
   StatusApi,
   type ApiResponse,
@@ -134,6 +135,7 @@ const latency = new LatencyApi(config)
 const auth = new AuthApi(config)
 const admin = new AdminApi(config)
 const database = new DatabaseApi(config)
+const ratelimit = new RateLimitApi(config)
 
 // echoRaw issues the /echo request for the selected HTTP method, forwarding an
 // optional request body (for body-carrying methods) and an optional raw query
@@ -225,6 +227,7 @@ const rawCalls = {
   '/accounts': () => database.getAccountsRaw(),
   '/transfer': (_args: CallArgs, opts: CallOptions) =>
     database.postTransferRaw({ transferRequest: jsonBody(opts) as unknown as TransferRequest }),
+  '/ratelimit': () => ratelimit.getRatelimitRaw(),
 } satisfies Record<string, (args: CallArgs, opts: CallOptions) => Promise<ApiResponse<unknown>>>
 
 // EndpointPath is the set of documented API paths the console can call.
@@ -605,6 +608,16 @@ export const endpoints: readonly Endpoint[] = [
         placeholder: 'e.g. 2500',
       },
     ],
+  },
+  {
+    method: 'GET',
+    path: '/ratelimit',
+    title: 'Probe the rate limiter',
+    description:
+      'Counts each request against a Redis-backed fixed window keyed by your client IP. Send repeatedly to exceed the limit and get a 429 with a Retry-After header. Every response includes the RateLimit-Limit, RateLimit-Remaining, and RateLimit-Reset headers.',
+    tag: 'RateLimit',
+    expectedStatuses: [200, 429],
+    resultHeaders: ['ratelimit-limit', 'ratelimit-remaining', 'ratelimit-reset', 'retry-after'],
   },
 ]
 

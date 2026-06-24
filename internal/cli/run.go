@@ -19,6 +19,7 @@ import (
 	"github.com/vancanhuit/devopsbin/internal/config"
 	"github.com/vancanhuit/devopsbin/internal/httpapi"
 	"github.com/vancanhuit/devopsbin/internal/logging"
+	"github.com/vancanhuit/devopsbin/internal/ratelimit"
 	"github.com/vancanhuit/devopsbin/internal/store"
 	"github.com/vancanhuit/devopsbin/web"
 )
@@ -97,6 +98,12 @@ func newRunCmd() *cli.Command {
 				cfg.Auth.LoginWindow,
 				cfg.Auth.LockTTL,
 			)
+			limiter := ratelimit.New(
+				rdb,
+				"ratelimit",
+				cfg.RateLimit.Limit,
+				cfg.RateLimit.Window,
+			)
 
 			api := httpapi.NewServer(
 				httpapi.WithLogger(logger),
@@ -123,6 +130,7 @@ func newRunCmd() *cli.Command {
 				}),
 				httpapi.WithPasswordRecovery(recovery),
 				httpapi.WithLoginLockout(lockout),
+				httpapi.WithRateLimiter(limiter),
 			)
 
 			srv := &http.Server{

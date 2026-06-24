@@ -5,5 +5,6 @@ export * from './AuthApi';
 export * from './DatabaseApi';
 export * from './InspectApi';
 export * from './LatencyApi';
+export * from './RateLimitApi';
 export * from './RuntimeApi';
 export * from './StatusApi';

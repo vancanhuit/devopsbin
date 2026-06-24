@@ -3,6 +3,7 @@ apis/AuthApi.ts
 apis/DatabaseApi.ts
 apis/InspectApi.ts
 apis/LatencyApi.ts
+apis/RateLimitApi.ts
 apis/RuntimeApi.ts
 apis/StatusApi.ts
 apis/index.ts
@@ -28,6 +29,8 @@ docs/PasswordChangeRequest.md
 docs/PasswordResetRequest.md
 docs/PasswordResetRequestRequest.md
 docs/PasswordResetResponse.md
+docs/RateLimitApi.md
+docs/RateLimitResponse.md
 docs/ReadyzResponse.md
 docs/RegisterRequest.md
 docs/RuntimeApi.md
@@ -61,6 +64,7 @@ models/PasswordChangeRequest.ts
 models/PasswordResetRequest.ts
 models/PasswordResetRequestRequest.ts
 models/PasswordResetResponse.ts
+models/RateLimitResponse.ts
 models/ReadyzResponse.ts
 models/RegisterRequest.ts
 models/SchemeResponse.ts

@@ -31,3 +31,4 @@ We use a lightweight Michael Nygard–style template:
 | ADR | Title | Status |
 | --- | ----- | ------ |
 | [0001](0001-account-transfer-isolation-retry.md) | Serializable, retrying transactions for account transfers | Accepted |
+| [0002](0002-redis-rate-limit.md) | Redis-backed per-IP fixed-window rate limiting | Accepted |

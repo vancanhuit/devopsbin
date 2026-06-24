@@ -36,6 +36,13 @@ tags:
       and retry automatically on serialization conflicts, demonstrating
       atomicity, isolation, and authorization. State-changing requests require a
       matching X-CSRF-Token header.
+  - name: RateLimit
+    description: >
+      A Redis-backed fixed-window rate-limit demo. Requests are counted per
+      client IP within a short window; once the limit is exceeded the endpoint
+      responds 429 with a Retry-After header. Every response carries the
+      standard RateLimit-Limit, RateLimit-Remaining, and RateLimit-Reset
+      headers so the remaining allowance is observable.
 
 paths:
   /livez:
@@ -875,6 +882,73 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /ratelimit:
+    get:
+      operationId: getRatelimit
+      tags:
+        - RateLimit
+      summary: Probe the per-IP rate limiter
+      description: >
+        Counts this request against a Redis-backed fixed window keyed by the
+        caller's client IP. While the request is within the limit the endpoint
+        returns 200 with the remaining allowance; once the limit is exceeded it
+        returns 429 until the window resets. Every response includes the
+        RateLimit-Limit, RateLimit-Remaining, and RateLimit-Reset headers, and
+        the 429 also includes Retry-After. Send the request repeatedly to cross
+        the threshold.
+      responses:
+        "200":
+          description: The request was within the limit for the current window.
+          headers:
+            RateLimit-Limit:
+              description: The maximum number of requests allowed per window.
+              schema:
+                type: integer
+                format: int32
+            RateLimit-Remaining:
+              description: The number of requests remaining in the current window.
+              schema:
+                type: integer
+                format: int32
+            RateLimit-Reset:
+              description: Seconds until the current window resets.
+              schema:
+                type: integer
+                format: int32
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimitResponse"
+        "429":
+          description: >
+            The rate limit was exceeded for the current window. Retry after the
+            period indicated by the Retry-After header.
+          headers:
+            RateLimit-Limit:
+              description: The maximum number of requests allowed per window.
+              schema:
+                type: integer
+                format: int32
+            RateLimit-Remaining:
+              description: The number of requests remaining in the current window (zero).
+              schema:
+                type: integer
+                format: int32
+            RateLimit-Reset:
+              description: Seconds until the current window resets.
+              schema:
+                type: integer
+                format: int32
+            Retry-After:
+              description: Seconds to wait before retrying.
+              schema:
+                type: integer
+                format: int32
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   parameters:
     CsrfTokenHeader:
@@ -1581,3 +1655,27 @@ components:
           format: date-time
           description: When the transfer was recorded.
           example: "2025-01-15T09:30:00Z"
+
+    RateLimitResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - limit
+        - remaining
+        - reset
+      properties:
+        limit:
+          type: integer
+          format: int32
+          description: The maximum number of requests allowed per window.
+          example: 5
+        remaining:
+          type: integer
+          format: int32
+          description: The number of requests remaining in the current window.
+          example: 4
+        reset:
+          type: integer
+          format: int32
+          description: Seconds until the current window resets.
+          example: 8
