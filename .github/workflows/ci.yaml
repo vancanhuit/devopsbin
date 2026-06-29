@@ -55,7 +55,7 @@ jobs:
       # Module cache is deterministic by go.sum, so an exact-key match restores
       # everything and there is nothing new to save.
       - name: Cache Go modules
-        uses: actions/cache@v5.0.5
+        uses: actions/cache@v6.1.0
         with:
           path: ~/go/pkg/mod
           key: ${{ runner.os }}-gomod-${{ hashFiles('go.sum') }}
@@ -69,7 +69,7 @@ jobs:
       # restore-keys fall back to the most recent prior cache for incremental
       # reuse.
       - name: Cache Go build
-        uses: actions/cache@v5.0.5
+        uses: actions/cache@v6.1.0
         with:
           path: ~/.cache/go-build
           key: ${{ runner.os }}-gobuild-${{ hashFiles('go.sum') }}-${{ github.sha }}
@@ -84,7 +84,7 @@ jobs:
       # those changes the analysis; the per-commit suffix lets each run save a
       # fresh snapshot and restore-keys fall back to the most recent one.
       - name: Cache golangci-lint
-        uses: actions/cache@v5.0.5
+        uses: actions/cache@v6.1.0
         with:
           path: ~/.cache/golangci-lint
           key: ${{ runner.os }}-golangci-${{ hashFiles('mise.toml', '.golangci.yml', 'go.sum') }}-${{ github.sha }}
@@ -93,7 +93,7 @@ jobs:
             ${{ runner.os }}-golangci-
 
       - name: Cache bun packages
-        uses: actions/cache@v5.0.5
+        uses: actions/cache@v6.1.0
         with:
           path: ~/.bun/install/cache
           key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
@@ -106,7 +106,7 @@ jobs:
       # a different build graph from the multi-platform release image, so it gets
       # its own key to avoid the two jobs evicting each other's cache.
       - name: Cache Docker buildx layers
-        uses: actions/cache@v5.0.5
+        uses: actions/cache@v6.1.0
         with:
           path: .cache/buildx
           key: ${{ runner.os }}-buildx-dev-${{ hashFiles('Dockerfile', 'go.sum', '**/bun.lock', 'mise.lock') }}
@@ -243,7 +243,7 @@ jobs:
       # from the check job's dev-image cache so the two build graphs don't evict
       # each other.
       - name: Cache Docker buildx layers
-        uses: actions/cache@v5.0.5
+        uses: actions/cache@v6.1.0
         with:
           path: .cache/buildx
           key: ${{ runner.os }}-buildx-release-${{ hashFiles('Dockerfile', 'go.sum', '**/bun.lock', 'mise.lock') }}
