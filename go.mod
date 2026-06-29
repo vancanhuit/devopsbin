@@ -9,10 +9,10 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/oapi-codegen/runtime v1.4.2
-	github.com/oasdiff/yaml3 v0.0.13
+	github.com/oasdiff/yaml3 v0.0.14
 	github.com/pressly/goose/v3 v3.27.1
-	github.com/redis/go-redis/v9 v9.20.1
-	github.com/urfave/cli/v3 v3.10.0
+	github.com/redis/go-redis/v9 v9.21.0
+	github.com/urfave/cli/v3 v3.10.1
 	golang.org/x/crypto v0.53.0
 )
 
